@@ -2,7 +2,7 @@
 // 속성 목록에서 고른 능력치를 거래소 능력치 그룹에 넣는다 — 새로고침·검색 없이.
 //
 // 왜 MAIN world + Vue 인스턴스인가 (stat-shortcut.js 와 같은 이유):
-//   콘텐츠 스크립트(ISOLATED)는 el.__vue__ 를 볼 수 없다. **거래소 화면이 스스로 부르는 메서드만** 부른다 —
+//   콘텐츠 스크립트(ISOLATED)는 Vue 인스턴스를 볼 수 없다. **거래소 화면이 스스로 부르는 메서드만** 부른다 —
 //   그래서 거래소가 직접 고른 것과 결과가 같다(행이 생기고 주소가 바뀌고 검색은 안 돈다). 2026-09-15 번들·라이브 확인:
 //     그룹 컴포넌트   selectFilter({id})            드롭다운에서 능력치 고르기
 //                     updateFilter(index,{min,max}) 행 입력칸에 숫자 치기
@@ -46,15 +46,35 @@
     return Object.keys(out).length ? out : null
   }
 
-  const vms = () => [...new Set([...document.querySelectorAll('.filter-group, .multiselect')].map((e) => e.__vue__).filter(Boolean))]
-  const groupVmAt = (index) => vms().find((v) => typeof v.selectFilter === 'function' && v.group && v.group.id === index) || null
+  /**
+   * 화면의 Vue 인스턴스 전부. 거래소는 Vue 3 라(2026-11-01 라이브 3.5.34) 요소에 __vue__ 가 없고, 운영 빌드라
+   * app._instance 도 없다 — 앱 컨테이너의 _vnode 에서 컴포넌트 트리를 내려간다. 메서드·계산값은 프록시에 그대로 있다.
+   * 같은 페이지의 카카오 상단 바는 아직 Vue 2 라 __vue__ 도 함께 모은다. stat-shortcut.js 에 같은 사본이 있다(import 불가).
+   */
+  function allVms() {
+    const out = new Set()
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return
+      if (node.component && !out.has(node.component.proxy)) {
+        if (node.component.proxy) out.add(node.component.proxy)
+        visit(node.component.subTree)
+      }
+      if (node.suspense) visit(node.suspense.activeBranch)
+      if (Array.isArray(node.children)) node.children.forEach(visit)
+    }
+    for (const e of document.querySelectorAll('*')) {
+      if (e.__vue__) out.add(e.__vue__)
+      if (e.__vue_app__) visit(e._vnode)
+    }
+    return [...out]
+  }
+  const groupVmAt = (index) => allVms().find((v) => typeof v.selectFilter === 'function' && v.group && v.group.id === index) || null
   const statsOf = (vm) => (vm && vm.$store && vm.$store.state && vm.$store.state.persistent && vm.$store.state.persistent.stats) || []
   const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
   /** 새 그룹을 만들고 그 그룹 컴포넌트가 화면에 생길 때까지 기다린다. 못 만들면 null. */
   async function createGroup(anyVm, type) {
-    const adder = [...new Set([...document.querySelectorAll('*')].map((e) => e.__vue__).filter(Boolean))]
-      .find((v) => typeof v.selectStatGroup === 'function')
+    const adder = allVms().find((v) => typeof v.selectStatGroup === 'function')
     if (!adder) return null
     const index = statsOf(anyVm).length
     adder.selectStatGroup({ type })
@@ -98,7 +118,7 @@
    */
   function applyItem(wanted) {
     if (!wanted || typeof wanted.name !== 'string' || typeof wanted.type !== 'string') return false
-    const all = [...new Set([...document.querySelectorAll('*')].map((e) => e.__vue__).filter(Boolean))]
+    const all = allVms()
     const root = all.find((v) => typeof v.setCurrentItem === 'function' && v.$store)
     const select = all.find((v) => v.$el && v.$el.classList && v.$el.classList.contains('search-select') && Array.isArray(v.options))
     if (!root || !select) return false
@@ -115,8 +135,7 @@
 
   /** 필터 그룹(유형·기타 …)의 컴포넌트 — 그룹 id 로 찾는다. */
   function filterGroupVm(id) {
-    return [...new Set([...document.querySelectorAll('.filter-group')].map((e) => e.__vue__).filter(Boolean))]
-      .find((v) => v.group && v.group.id === id && typeof v.updateFilter === 'function') || null
+    return allVms().find((v) => v.group && v.group.id === id && typeof v.updateFilter === 'function') || null
   }
 
   /**
@@ -165,8 +184,8 @@
     try {
       if (typeof d.token !== 'string' || !TOKEN_RE.test(d.token) || !Array.isArray(d.items)) return reply('bad-request')
       const el = document.querySelector('.filter-group[data-ba-group-token="' + d.token + '"]')
-      const home = el && el.__vue__
-      if (!home || typeof home.selectFilter !== 'function') return reply('no-group')
+      const home = el && allVms().find((v) => (v === el.__vue__ || v.$el === el) && typeof v.selectFilter === 'function')
+      if (!home) return reply('no-group')
       // 유형을 먼저 정한다 — 능력치 행이 생길 때 티어 칩이 새 유형 기준으로 뜬다
       // 아이템(검색칸) → 유형 → 기타 순 — 능력치 행이 생길 때 티어 칩이 새 아이템·유형 기준으로 뜬다
       try { named = applyItem(d.item) } catch (_) { named = false }

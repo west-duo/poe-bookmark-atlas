@@ -1,11 +1,21 @@
 ---
-timestamp: 2026-10-14 (Asia/Seoul)
+timestamp: 2026-11-01 (Asia/Seoul)
 project: poe-bookmark-atlas
 ---
 
 # poe-bookmark-atlas 핸드오프
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
+
+## 거래소 Vue 3 전환 — 속성 목록 넣기·단축키 복구 (2026-11-01)
+
+- 제보: 속성 목록 「넣기」가 늘 「거래소 그룹을 찾지 못해…」. 시청자 URL 그대로 재현됐고 새로고침으로 풀리지 않았다.
+- 원인: 거래소 앱이 **Vue 3.5.34** 가 되어 요소에 `__vue__` 가 없다(`no-group`). 전환 시점은 미확인 — 마지막 정상 기록 2026-09-23, 지금 번들 `main.aec275…` 수정일 2026-10-22.
+- 수정: `stat-adder.js` `allVms()` · `stat-shortcut.js` `vmOf()` 가 앱 컨테이너(`__vue_app__` 요소)의 `_vnode` 에서 컴포넌트 트리를 내려간다. 운영 빌드라 `app._instance` 는 없다. 메서드 이름(`selectFilter`·`updateFilter`·`updateFloat`·`selectStatGroup`·`availableOptionsFlat`·`setCurrentItem`·`activate`)은 그대로다. 같은 페이지의 카카오 상단 바는 아직 Vue 2 라 `__vue__` 도 함께 본다. MAIN world 는 import 불가라 탐색이 두 파일에 사본으로 있다.
+- 라이브 확인(로그인 프로필, 빌드된 코드를 탭에 주입): 필수 → 기존 AND, 후보 → 개수 그룹 2개 생성·최소값, 값 채우기, 있는 조건·모르는 id 건너뜀, 희귀도 보존·강제, 기타 「함양」, 아이템 검색칸, 드롭다운 열고 닫기. 검색 요청 0건.
+- ⏳ **확장을 거친 흐름은 사람 확인 대기** — `chrome://extensions` 새로고침은 도구로 못 한다. 영문 거래소(GGG)는 한국 IP 에서 페이지가 리다이렉트돼 미확인.
+- ⚠ 개발 `dist` 를 다시 빌드하면 옛 자산 이름이 사라져, 확장을 새로고침하기 전까지 그 프로필의 패널이 안 뜬다(콘솔 `패널이 뜨지 않아`).
+- 남은 것: `addResultMessage` 가 `no-group`·`timeout`·`exception`·`bad-request` 를 모두 같은 문구(새로고침 권유)로 낸다. 스토어 사용자는 릴리즈 전까지 계속 깨져 있다.
 
 ## 고유 표 패시브 이름 — 옛 번역 사전 대신 poe-game-data 판 (2026-10-19, 사전 저장소 은퇴)
 
