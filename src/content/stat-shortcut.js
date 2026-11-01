@@ -6,7 +6,7 @@
 // 왜 MAIN world + Vue 인스턴스 직접 호출인가:
 //   vue-multiselect는 합성(synthetic) 이벤트로는 드롭다운이 열리지 않는다(trusted 이벤트 필요).
 //   콘텐츠 스크립트는 trusted 이벤트를 만들 수 없으므로, MAIN world에서 컴포넌트 인스턴스
-//   (el.__vue__, Vue 2)의 activate()/deactivate()를 직접 호출한다. 실패 시 focus()로 폴백.
+//   (Vue 3 프록시, 구 Vue 2 면 el.__vue__)의 activate()/deactivate()를 직접 호출한다. 실패 시 focus()로 폴백.
 (() => {
   // Alt+<key> → placeholder 후보(한글/영문). e.code로 한글 IME/레이아웃 무관.
   const MAP = [
@@ -27,9 +27,33 @@
     })
   const msOf = (input) => input && input.closest('.multiselect')
   const isOpen = (input) => { const ms = msOf(input); return !!(ms && ms.classList.contains('multiselect--active')) }
-  const deactivate = (input) => { const ms = msOf(input); try { ms && ms.__vue__ && ms.__vue__.deactivate && ms.__vue__.deactivate() } catch (_) {} }
+  // 드롭다운 컴포넌트 — 거래소는 Vue 3 라 요소에 __vue__ 가 없다. 앱 컨테이너의 _vnode 에서 트리를 내려가 찾는다
+  // (stat-adder.js allVms 와 같은 방법, MAIN world 라 import 불가)
+  const vmOf = (el) => {
+    if (!el) return null
+    if (el.__vue__) return el.__vue__
+    const seen = new Set()
+    const visit = (node) => {
+      if (!node || typeof node !== 'object') return null
+      const c = node.component
+      if (c && !seen.has(c)) {
+        seen.add(c)
+        if (c.proxy && c.proxy.$el === el && typeof c.proxy.activate === 'function') return c.proxy
+        const hit = visit(c.subTree)
+        if (hit) return hit
+      }
+      const kids = [node.suspense && node.suspense.activeBranch, ...(Array.isArray(node.children) ? node.children : [])]
+      for (const kid of kids) { const hit = visit(kid); if (hit) return hit }
+      return null
+    }
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      if (p.__vue_app__) return visit(p._vnode)
+    }
+    return null
+  }
+  const deactivate = (input) => { const vm = vmOf(msOf(input)); try { vm && vm.deactivate && vm.deactivate() } catch (_) {} }
   const activate = (input) => {
-    const ms = msOf(input); const vm = ms && ms.__vue__
+    const vm = vmOf(msOf(input))
     try { if (vm && typeof vm.activate === 'function') { vm.activate(); return true } } catch (_) {}
     try { input.focus() } catch (_) {} // 폴백: 최소한 포커스
     return true
