@@ -3,32 +3,43 @@
 // DOM 을 모르고 네트워크를 타지 않는다.
 //
 // 표 한 항목: { n: 이름, b: 베이스, c: 유형|null, x?: 1(타락 고유), i?/f?/m?/mf?: [줄] }
-//   줄: { t: 문구, id?: 거래소 조건, alt?: [후보 id], v?: [[최소,최대], …], k?: 'r'(무작위 풀 자리) }
+//   줄: { t: 문구, id?: 거래소 조건, alt?: [후보 id], v?: [[최소,최대], …], k?: 'r'(무작위 풀 자리),
+//         p?: [{t, id?, alt?, all?, v?}] 무작위 풀(all = 두 줄짜리 속성의 조건 둘), r?: 무작위로 붙는 개수,
+//         o?: 1(빌드 때 거래소 매물에서 본 속성), was?: 목록에 고정처럼 적혀 있던 변형 문구 }
 
 /** 줄 종류 — 기본 속성 · 고정 속성 · 바알 함양 속성 · 함양판에 적힌 고정 속성 */
 export const LINE_KINDS = ['i', 'f', 'm', 'mf']
-// 넣는 쪽(stat-adder.js ID_RE)이 받는 조건 id 모양 — 이 밖의 것은 고르게 두면 조용히 빠진다
-const PLAIN_ID = /^[a-z]+\.[a-z0-9_]+$/
+// 넣는 쪽(stat-adder.js ID_RE)이 받는 조건 id 모양 — 이 밖의 것은 고르게 두면 조용히 빠진다.
+// 선택형 조건은 거래소 목록이 옵션마다 `|번호` 를 붙인 id 로 준다(`explicit.stat_264262054|8` 「수은의 유산」).
+const TRADE_ID = /^[a-z]+\.[a-z0-9_]+(?:\|\d+)?$/
 
 /**
  * 고를 수 있는 줄인가, 아니면 왜 못 고르나.
  * - `ok`     거래소 조건 하나에 이어짐
- * - `const`  고정·기본 속성인데 값이 하나뿐 — 모든 매물에 똑같이 붙어 걸러도 결과가 같다(바알 함양 줄은 예외: 붙었는지가 곧 조건)
- * - `alt`    문구가 같은 거래소 조건이 둘 이상 — 어느 쪽인지 매물로 확인하기 전에는 넣지 않는다(틀린 조건이 조용히 들어간다)
- * - `random` 무작위 풀 자리표시(「[3 Random Socket Modifiers]」)
- * - `option` 선택형 조건(`explicit.stat_3418580811|21` — 값 대신 고르는 옵션이 붙는다). 넣는 쪽이 아직 옵션을 싣지 못해
- *            거래소가 받지 않는다(독립 검토 2026-09-23: 영웅적인 비극·죽지 않는 증오·제어된 변형)
+ * - `const`  고정·기본 속성인데 값이 하나뿐 — 모든 매물에 똑같이 붙는다. 고를 수는 있다(붙었는지만 본다, 사용자 요청 2026-09-24)
+ * - `alt`    문구가 같은 거래소 조건이 둘 이상 — 고르면 후보 조건을 모두 넣어 **둘 중 하나**가 붙은 매물을 찾는다
+ *            (한 아이템에 같은 문구의 조건이 둘 다 붙지는 않는다)
+ * - `pair`   두 줄짜리 풀 속성(`all` — 태어나지 않은 리치 「카오스 피해 … / 저주를 건 적의 카오스 저항 …」) — 두 조건을 모두 필수로 넣는다
+ * - `random` 무작위 풀 자리표시(「[3 Random Socket Modifiers]」) — 풀(`p`)이 있으면 풀의 줄을 고른다
+ * - `option` 표의 줄이 선택형 조건 하나(`explicit.stat_3418580811|21`)에 이어진 것 — poe2db 가 변형 하나만 적어서
+ *            (영웅적인 비극은 보라나·메드베드·올로스 중 하나가 붙는다) 고르면 다른 변형 매물이 조용히 빠진다(독립 검토 2026-09-24).
+ *            풀의 줄(`pool`)은 거래소 목록에서 옵션마다 가려낸 것이라 해당하지 않는다.
  * - `none`   거래소 조건을 찾지 못함
- * @returns {'ok'|'const'|'alt'|'random'|'option'|'none'}
+ * @returns {'ok'|'const'|'alt'|'pair'|'random'|'option'|'none'}
  */
 export function lineState(line, kind) {
   if (!line) return 'none'
   if (line.k === 'r') return 'random'
-  if (!line.id) return line.alt?.length ? 'alt' : 'none'
-  if (!PLAIN_ID.test(line.id)) return 'option'
+  if (!line.id && line.all?.length) return line.all.every((id) => TRADE_ID.test(id)) ? 'pair' : 'none'
+  if (!line.id) return line.alt?.length && line.alt.every((id) => TRADE_ID.test(id)) ? 'alt' : 'none'
+  if (!TRADE_ID.test(line.id)) return 'none'
+  if (line.id.includes('|') && !line.pool) return 'option'
   if (kind !== 'm' && isConstant(line)) return 'const'
   return 'ok'
 }
+
+/** 고를 수 있는 상태 */
+export const pickable = (state) => state === 'ok' || state === 'const' || state === 'alt' || state === 'pair'
 
 /** 값 자리가 모두 한 값인가(`50% 증가`). 값 자리가 없는 줄(「항상 명중」)도 모든 매물에 같다. */
 function isConstant(line) {
@@ -82,7 +93,8 @@ export function findUniques(table, term, cls) {
   const parts = String(term ?? '').toLowerCase().split(/\s+/).map((p) => p.replace(/^~+/, '')).filter(Boolean)
   if (!parts.length) return all.filter((e) => cls && e.c === cls).sort(byName)
   const hits = all.filter((e) => {
-    const hay = norm([e.n, e.b, ...LINE_KINDS.flatMap((k) => (e[k] ?? []).map((l) => l.t)), e.m?.length ? '함양' : ''].join(' '))
+    // was — 매물 관찰로 무작위 풀이 된 줄의 원래 문구(「시작 지점」 · 「칼구르」로도 찾게)
+    const hay = norm([e.n, e.b, ...LINE_KINDS.flatMap((k) => (e[k] ?? []).flatMap((l) => [l.t, l.was ?? ''])), e.m?.length ? '함양' : ''].join(' '))
     return parts.every((p) => hay.includes(norm(p)))
   })
   const nameHit = (e) => parts.every((p) => norm(e.n).includes(norm(p)))

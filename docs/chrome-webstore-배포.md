@@ -67,8 +67,9 @@ zip 생성 방법:
 
 > POE 북마크 아틀라스는 사용자의 Path of Exile 거래소 검색을 브라우저 로컬 저장소(chrome.storage.local)에만 저장합니다. 어떤 개인정보도 외부 서버로 전송하거나 제3자와 공유하지 않습니다. 가격 환산을 위한 환율 정보(seominugi.com)와 능력치 메타데이터(거래소 API)를 요청하지만, 사용자 식별 정보나 검색 내용은 전송하지 않습니다. 저장된 데이터는 확장 삭제 시 함께 제거됩니다.
 
-**게시 완료 URL (웹스토어 처리방침 URL로 사용)**: https://github.com/seominugi/smng-poe-privacy
+**게시 완료 URL (웹스토어 처리방침 URL로 사용)**: https://github.com/west-duo/smng-poe-privacy
 — 서미누기 POE 확장 공용 repo이며 "POE 북마크 아틀라스" 섹션 포함. 나랏말서미누기는 추후 `#나랏말서미누기-poe` 섹션으로 교체 예정.
+— 2026-10-22 조직 이전 전에 웹스토어에 등록한 값은 `github.com/seominugi/smng-poe-privacy`(새 주소로 넘겨짐). 다음 게시 때 개발자 콘솔에서 위 주소로 바꾼다.
 
 ## 7. 심사 참고
 

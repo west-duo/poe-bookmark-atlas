@@ -1,6 +1,6 @@
 {
   "name": "poe-bookmark-atlas",
-  "version": "0.14.1",
+  "version": "0.15.2",
   "description": "POE 거래소 검색 북마크 + 히스토리 관리 크롬 확장",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",

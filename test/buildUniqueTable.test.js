@@ -38,6 +38,7 @@ describe('linesOf — 칸 묶음', () => {
     const counts = { hidden: 0 }
     const out = linesOf([['visual use power charges elemental epk [1]'], ['[3 Random Socket Modifiers]']], index, null, counts)
     expect(counts.hidden).toBe(1)
-    expect(out).toEqual([{ t: '[3 Random Socket Modifiers]', k: 'r' }])
+    // 풀을 모르는 자리도 붙는 개수는 남긴다
+    expect(out).toEqual([{ t: '[3 Random Socket Modifiers]', k: 'r', r: 3 }])
   })
 })

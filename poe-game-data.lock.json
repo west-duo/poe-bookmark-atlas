@@ -1,11 +1,11 @@
 {
   "schemaVersion": 2,
-  "repository": "seominugi/poe-game-data",
-  "tag": "v2026.09.17.2",
-  "commit": "126de1c0d8b639a2a4be21c021f554a17f723c9a",
-  "snapshot": "v2026.09.17.2",
+  "repository": "west-duo/poe-game-data",
+  "tag": "v2026.10.13.1",
+  "commit": "cf2c1f477d82d3e4783042691265da9c304d0f8a",
+  "snapshot": "v2026.10.13.1",
   "icons": {
-    "manifestSha256": "a6df72495390605b21a9347cf2a8e80e919e099714ce347d633aff7270f88e82",
+    "manifestSha256": "cca6ad00867d673a7c531f2015c6bf2ddd47d65d82feb3d4dbb52ffa697bf458",
     "source": "local-ggpk-build",
     "distribution": "poe-loot-overlay-derived-only"
   }

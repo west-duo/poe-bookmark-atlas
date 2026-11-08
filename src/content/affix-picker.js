@@ -6,7 +6,7 @@
 // 디자인: 글래스 시안 1번(가운데 시트) + 트리거는 티어 칩 모양(사용자 결정 2026-09-15).
 // 실제로 넣는 일은 MAIN world 의 stat-adder.js 가 한다. 이 파일은 DOM 과 사용자 선택만 다룬다.
 
-import { filterAffixes, affixFilterValue, allAffixItems, SPECIAL_POOLS } from '../lib/affixList.js'
+import { filterAffixes, affixPicksOf, uniquePicks, allAffixItems, SPECIAL_POOLS } from '../lib/affixList.js'
 import { groupByCategory } from '../lib/affixCategory.js'
 import { bindPageTip, hidePageTip } from './page-tip.js'
 import { buildTypeDoll } from './affix-type-doll.js'
@@ -138,6 +138,11 @@ export function affixLimitOf(cls) {
   return 3
 }
 const SOURCE_LABEL = { prefix: '접두', suffix: '접미', corrupted: '타락' }
+// 서판 — 남은 사용 횟수는 거래소 「유사」 조건 하나로 종류와 상관없이 걸린다(「사용 횟수 #회 남음(서판)」, 2026-09-23 목록 확인).
+// 서판 8종 모두 새것은 10회(게임 데이터 implicits 「잔여 사용 횟수 10회」).
+const TABLET_CLASS = 'TowerAugmentation'
+const TABLET_USES_ID = 'pseudo.pseudo_number_of_uses_remaining'
+const TABLET_USES_MAX = 10
 // 접히는 공급원 띠 — 에센스·훼손된·합금. 일반 속성보다 드물게 찾으므로 접은 채 시작한다.
 const BAND_POOLS = SPECIAL_POOLS.filter((p) => p.sided)
 /** 목록 안에서 유일한 표식 — affixListFor 가 붙인 key, 없으면 출처와 id 로 만든다. */
@@ -170,8 +175,10 @@ const TABS = [
  * @param {{u:object[]}|null} [args.uniques] 고유 아이템 속성 표(uniqueMods) — 있으면 머리에 「비고유 | 고유」 전환이 생긴다
  * @param {'normal'|'unique'} [args.startMode] 처음 보일 모드 — 지금 검색이 고유 검색이면 부르는 쪽이 'unique' 로 연다
  * @param {(sel:{unique:object, items:Array<{id:string, value:{min?:number,max?:number}|null, role:'and'|'or', mutated:boolean}>})=>Promise<void>|void} [args.onAddUnique]
+ * @param {(entry:object, opts?:{fresh?:boolean})=>Promise<{status:'ok'|'empty'|'rate'|'error', data?:object, at?:number, wait?:number}>} [args.observeUnique]
+ *   「매물에서 속성 더 찾기」 — 없으면 단추를 그리지 않는다
  */
-export function openAffixPopover({ anchor, title, subtitle, list, classes = [], currentClass = null, listForClass, basesForClass, onAdd, prefs = {}, onPrefs, uniques = null, startMode = 'normal', onAddUnique }) {
+export function openAffixPopover({ anchor, title, subtitle, list, classes = [], currentClass = null, listForClass, basesForClass, onAdd, prefs = {}, onPrefs, uniques = null, startMode = 'normal', onAddUnique, observeUnique = null }) {
   // 사용자 설정 — 창을 닫았다 열어도 남는다(부르는 쪽이 저장한다)
   //   baseByClass  유형마다 마지막에 고른 베이스(주얼 → 루비 …)
   const settings = { baseByClass: { ...(prefs.baseByClass ?? {}) }, emphasis: prefs.emphasis !== false }
@@ -241,7 +248,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   if (canUnique) head.append(modeSeg)
   head.append(tabs, searchWrap, closeBtn)
   pop.appendChild(head)
-  const uniquePane = canUnique ? createUniquePane(doc, { table: uniques, onChange: () => refresh() }) : null
+  const uniquePane = canUnique ? createUniquePane(doc, { table: uniques, onChange: () => refresh(), observe: observeUnique }) : null
 
   // ── 유형 선택 — 장비창 모양(시안 A, 사용자 결정 2026-09-16). 유형을 고르면 접혀 목록에 자리를 내준다. ──
   const pickClass = (cls) => {
@@ -291,6 +298,41 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   let bands = [] // 공급원 띠 {el, rows, setOpen, startOpen}
   let bulks = [] // 「OR 전체」 단추 {btn, rowsOf}
   let tab = 'all'
+  // 서판 남은 사용 횟수 최소(0 = 넣지 않음) — 서판 8종 모두 새것은 10회. 서판 유형을 보고 있을 때만 들어간다.
+  let tabletUses = 0
+  const usesOn = () => current.cls === TABLET_CLASS && tabletUses > 0
+  /** 서판 목록 맨 위 — 「남은 사용 횟수 최소 N회」. 값만 바꾸고 요소는 다시 만들지 않는다(포커스가 빠지지 않게). */
+  function usesRow() {
+    const row = el(doc, 'div', 'ba-affix-uses')
+    row.append(el(doc, 'span', 'ba-affix-uses-name', '남은 사용 횟수'), el(doc, 'span', 'ba-affix-uses-min', '최소'))
+    const val = el(doc, 'b', 'ba-affix-ormin-val')
+    val.setAttribute('aria-live', 'polite')
+    const note = el(doc, 'span', 'ba-affix-uses-note')
+    const step = (d, text, label) => {
+      const b = el(doc, 'button', 'ba-affix-ormin-step', text)
+      b.type = 'button'
+      b.setAttribute('aria-label', `남은 사용 횟수 최소 ${label}`)
+      b.addEventListener('click', (ev) => {
+        ev.preventDefault()
+        tabletUses = Math.min(Math.max(0, tabletUses + d), TABLET_USES_MAX)
+        paint()
+        refresh()
+      })
+      return b
+    }
+    const dec = step(-1, '−', '줄이기')
+    const inc = step(1, '+', '늘리기')
+    const paint = () => {
+      val.textContent = String(tabletUses)
+      dec.disabled = tabletUses <= 0
+      inc.disabled = tabletUses >= TABLET_USES_MAX
+      row.classList.toggle('is-on', tabletUses > 0)
+      note.textContent = tabletUses > 0 ? `회 이상인 서판만 찾아요` : `회 · 0 이면 넣지 않아요 (새 서판은 ${TABLET_USES_MAX}회)`
+    }
+    row.append(dec, val, inc, note)
+    paint()
+    return row
+  }
   let current = { cls: currentClass, base: null, list }
   {
     // 이미 유형이 정해진 채 열었으면 그 유형에서 마지막에 고른 베이스로 시작한다
@@ -406,8 +448,9 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   const refresh = () => {
     if (mode === 'unique') { refreshUnique(); return }
     const picks = [...selected.values()]
-    const n = picks.length
+    const n = picks.length + (usesOn() ? 1 : 0)
     const parts = [] // { kind, text } — 칩 하나씩
+    if (usesOn()) parts.push({ kind: 'value', text: `남은 횟수 ${tabletUses}+`, tip: `남은 사용 횟수가 ${tabletUses}회 이상인 서판을 찾아요` })
     const valued = picks.filter((p) => p.index >= 0).length
     const must = picks.filter((p) => p.role === 'and').length
     if (valued) parts.push({ kind: 'value', text: `값 ${valued}`, tip: `${valued}개는 고른 티어 값까지 채워 넣어요\n나머지는 값 칸을 비워 둬요` })
@@ -479,19 +522,24 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   function refreshUnique() {
     const sel = uniquePane?.picks()
     const items = sel?.items ?? []
-    const n = items.length
+    // 조건이 둘로 갈리는 줄은 조건 둘을 넣지만 사용자에게는 한 줄이다 — 개수는 줄로 센다
+    const lines = (pred) => new Set(items.filter(pred).map((p) => p.line ?? p.id)).size
+    const must = lines((p) => p.role === 'and' || p.role.startsWith('or:alt'))
+    const or = lines((p) => p.role === 'or')
+    const n = must + or
     const parts = []
-    const must = items.filter((p) => p.role === 'and').length
-    const or = items.length - must
-    const mut = items.filter((p) => p.mutated).length
-    if (sel) parts.push({ kind: 'unique', text: sel.unique.n, tip: `${sel.unique.n} · ${sel.unique.b}\n넣으면 유형·희귀도(고유)도 이 아이템에 맞춰요` })
+    const mut = lines((p) => p.mutated)
+    // 줄을 고르지 않았어도 보고 있는 고유 하나는 이름만 넣을 수 있다
+    const only = sel ? null : uniquePane?.current() ?? null
+    const unique = sel?.unique ?? only
+    if (unique) parts.push({ kind: 'unique', text: unique.n, tip: `${unique.n} · ${unique.b}\n넣으면 아이템 검색칸·유형·희귀도(고유)도 이 아이템에 맞춰요` })
     if (must) parts.push({ kind: 'and', text: `필수 ${must}`, tip: `필수 ${must}개가 모두 붙은 매물을 찾아요` })
     if (or) parts.push({ kind: 'or', text: `후보 ${or}`, tip: `후보 ${or}개 중 하나 이상 붙은 매물을 찾아요` })
     if (mut) parts.push({ kind: 'mutated', text: `함양 ${mut}`, tip: '기타 필터 「함양된 바알 고유: 예」도 함께 켜요' })
     paintSummary(n, parts)
     paintHint(n)
-    addBtn.textContent = n ? `${n}개 넣기` : '넣기'
-    addBtn.disabled = n === 0
+    addBtn.textContent = n ? `${n}개 넣기` : only ? '이 고유만 넣기' : '넣기'
+    addBtn.disabled = n === 0 && !only
     clearBtn.hidden = n === 0
   }
   let hintState = null
@@ -554,7 +602,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
       b.setAttribute('aria-pressed', String(on))
     })
   }
-  const defaultPick = (item) => ({ index: item.single && item.choices.length ? 0 : -1, role: DEFAULT_ROLE })
+  // 하이브리드는 필수로만 — 「개수」 그룹에 넣으면 한 모드가 조건 둘로 두 번 세어진다(affixPicksOf)
+  const defaultPick = (item) => ({ index: item.single && item.choices.length ? 0 : -1, role: item.hybrid ? 'and' : DEFAULT_ROLE })
   /** 줄이 속한 띠 이름 — 「같은 조건」 안내에 쓴다. */
   const poolLabel = (item) => {
     if (!item.pool || item.pool === 'normal') return '기본'
@@ -565,7 +614,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
 
   // ── OR 일괄 — OR 은 수십 개를 하나씩 누르기 번거롭다(사용자 요청 2026-09-16). 필수는 많아야 6개라 행마다 고른다. ──
   // 대상은 지금 보이는(검색에 걸린) 행 중 이미 그룹에 있는 것을 뺀 것이다.
-  const bulkTargets = (list) => list.filter((r) => !r.item.have && !r.row.hidden)
+  const bulkTargets = (list) => list.filter((r) => !r.item.have && !r.row.hidden && !r.item.hybrid)
   const bulkIsOn = (list) => {
     const targets = bulkTargets(list)
     return targets.length > 0 && targets.every((r) => selected.get(keyOf(r.item))?.role === 'or')
@@ -670,6 +719,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
         : '아이템 유형을 먼저 고르면, 그 유형에 붙는 속성을 보여 드려요.'))
       return
     }
+    if (current.cls === TABLET_CLASS) body.appendChild(usesRow())
     if (!counts[tab]) {
       body.appendChild(el(doc, 'div', 'ba-affix-none', '이 유형에는 없어요'))
       return
@@ -875,22 +925,26 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   })
   addBtn.addEventListener('click', async () => {
     if (mode === 'unique') {
-      const sel = uniquePane.picks()
+      const cur = uniquePane.current()
+      const sel = uniquePane.picks() ?? (cur ? { unique: cur, items: [] } : null)
       if (!sel) return
       addBtn.disabled = true
       addBtn.textContent = '넣는 중…'
       try { await onAddUnique(sel) } finally { close() }
       return
     }
-    if (!selected.size) return
+    if (!selected.size && !usesOn()) return
     // 고른 순서가 아니라 목록 순서(접두 → 접미 → 타락)로 넣는다 — 체크한 순서는 사용자도 기억하지 못한다.
     // 다른 유형에서 고른 것이 섞이면 유형을 처음 고른 차례대로, 그 안에서는 목록 순서다.
     const chosen = [...selected.values()].sort((a, b) => a.batch - b.batch || a.pos - b.pos)
-    const picks = chosen.map((p) => ({ id: p.item.id, value: affixFilterValue(p.item, p.index), role: orGroupOf(p) }))
+    // 하이브리드는 조건 둘로 펼쳐진다(각 문장의 티어 값)
+    const picks = uniquePicks(chosen.flatMap((p) => affixPicksOf(p.item, p.index, orGroupOf(p))))
+    // 서판 남은 사용 횟수 — 서판 종류와 상관없이 걸리는 유사 조건 하나(필수)
+    if (usesOn()) picks.push({ id: TABLET_USES_ID, value: { min: tabletUses }, role: 'and' })
     const orMin = {}
     for (const [g, e] of orGroups()) orMin[g] = orMinOf(g, e.max)
     // 고른 속성이 온 유형들 — 하나뿐이면 부르는 쪽이 거래소 아이템 유형을 그 유형으로 맞출 수 있다
-    const classesPicked = [...new Set(chosen.map((p) => p.cls))]
+    const classesPicked = [...new Set([...chosen.map((p) => p.cls), ...(usesOn() ? [TABLET_CLASS] : [])])]
     addBtn.disabled = true
     addBtn.textContent = '넣는 중…'
     try { await onAdd(picks, { classes: classesPicked, orMin }) } finally { close() }
@@ -899,7 +953,9 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   scrim.addEventListener('mousedown', () => close())
 
   const onKey = (e) => {
-    if (e.key === 'Escape') { e.stopPropagation(); close() } else if (e.key === '/' && doc.activeElement !== search && !search.disabled) {
+    // 다른 입력칸(고유 풀 안에서 찾는 칸·값 칸)에서 친 `/` 는 그 칸의 글자다 — 위 검색칸으로 빼앗지 않는다
+    const typing = /^(INPUT|TEXTAREA)$/.test(e.composedPath?.()[0]?.tagName ?? '')
+    if (e.key === 'Escape') { e.stopPropagation(); close() } else if (e.key === '/' && !typing && doc.activeElement !== search && !search.disabled) {
       e.preventDefault()
       search.focus()
     }
@@ -956,6 +1012,14 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
   box.type = 'checkbox'
   box.disabled = item.have
   const name = el(doc, 'span', 'ba-affix-name', item.text)
+  if (item.hybrid) {
+    // 조건 둘이 한 속성으로 붙는다는 표시 — 같은 종류 묶음 안에서 단일 속성 줄과 나란히 선다
+    row.classList.add('is-hybrid')
+    const tag = el(doc, 'span', 'ba-affix-hybrid', '하이브리드')
+    tag.dataset.tip = '한 속성에 조건 둘이 함께 붙어요\n넣으면 두 조건을 고른 티어 값으로 함께 넣어요(필수)'
+    bindPageTip(tag, { placement: 'below' })
+    name.append(' ', tag)
+  }
   // 툴팁은 전부 우리 것(page-tip.js) — 네이티브 title 을 쓰지 않는다(사용자 결정 2026-09-16)
   name.dataset.tip = item.open ? `${item.text}
 레벨은 거래소 칸에 직접 넣어요` : item.single ? `${item.text}\n값 범위 하나` : `${item.text}\n티어 ${item.tiers}개 · 최고 티어 필요 아이템 레벨 ${item.topLevel}`
@@ -997,6 +1061,8 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
       b.type = 'button'
       b.dataset.role = role.key
       b.dataset.tip = role.tip
+      // 하이브리드는 필수로만 넣는다 — 후보 단추는 자리만 지키고 숨긴다(줄마다 칸이 같은 세로선에 서게)
+      if (item.hybrid && role.key !== 'and') { b.disabled = true; b.classList.add('is-void'); b.setAttribute('aria-hidden', 'true'); b.tabIndex = -1 }
       bindPageTip(b, { placement: 'below' })
       b.setAttribute('aria-pressed', 'false')
       b.addEventListener('click', (e) => {
@@ -1018,9 +1084,11 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
         const pill = el(doc, 'button', 'ba-affix-pill', byRange ? c.range.replace(/ 평균$/, '') : `T${c.t}`)
         pill.type = 'button'
         pill.setAttribute('aria-pressed', 'false')
-        pill.dataset.tip = item.single
-          ? `최소 ${c.min} · 최대 ${c.max} 를 함께 넣어요`
-          : `${c.range} → ${item.fill === 'max' ? '최대' : '최소'} ${c[item.fill]} · 아이템 레벨 ${c.l} 이상`
+        pill.dataset.tip = item.hybrid
+          ? `${c.range}\n두 조건에 이 티어 값을 함께 넣어요 · 아이템 레벨 ${c.l} 이상`
+          : item.single
+            ? `최소 ${c.min} · 최대 ${c.max} 를 함께 넣어요`
+            : `${c.range} → ${item.fill === 'max' ? '최대' : '최소'} ${c[item.fill]} · 아이템 레벨 ${c.l} 이상`
         bindPageTip(pill, { placement: 'below' })
         pill.addEventListener('click', (e) => {
           e.preventDefault()

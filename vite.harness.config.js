@@ -6,7 +6,7 @@ export default defineConfig({
   root: 'test-harness',
   server: {
     port: 5199, strictPort: true,
-    // affix.html 이 거래소 능력치 목록을 받는 길 — 브라우저에서 직접 부르면 CORS 에 막힌다(CLAUDE.md 글로벌 지원 절)
+    // affix.html 이 거래소 능력치 목록을 받는 길 — 브라우저에서 직접 부르면 CORS 에 막힌다(AGENTS.md 글로벌 지원 절)
     proxy: { '/trade2-api': { target: 'https://poe.kakaogames.com', changeOrigin: true, rewrite: (p) => p.replace(/^\/trade2-api/, '/api'), headers: { 'User-Agent': 'Mozilla/5.0' } } },
   },
 })

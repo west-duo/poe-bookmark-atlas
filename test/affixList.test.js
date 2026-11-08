@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { affixListFor, affixFilterValue, filterAffixes, allAffixItems, basesFor } from '../src/lib/affixList.js'
+import { affixListFor, affixFilterValue, affixPicksOf, uniquePicks, filterAffixes, allAffixItems, basesFor } from '../src/lib/affixList.js'
 import realTable from '../src/lib/statTiers.poe2.json'
 import realAffixes from '../src/lib/statAffixes.poe2.json'
 
@@ -258,5 +258,28 @@ describe('실제 데이터 — statAffixes 와 statTiers 가 같은 능력치를
 
   it('주얼 반경판이 제대로 이어져 주얼 능력치가 수백 개다 (전에는 값 충돌로 7개)', () => {
     expect(Object.keys(realTable.Jewel).length).toBeGreaterThan(250)
+  })
+})
+
+describe('하이브리드 — 같은 접두·접미 열에 섞이고, 조건 둘을 필수로 넣는다', () => {
+  // 실제 데이터(버클러 「회피 #% 증가(특정) / 기절 한계치 #」, 게임 데이터 T1 39–42 / 95–136)
+  const hybridMap = { 'explicit.stat_124859000': '회피 #% 증가(특정)', 'explicit.stat_915769802': '기절 한계치 #' }
+  const list = affixListFor({ table: realTable, affixes: realAffixes, itemClass: 'Buckler', statMap: hybridMap })
+  const item = list.prefix.find((it) => it.hybrid)
+  it('접두어 열·방어 묶음에 한 줄로 들어간다', () => {
+    expect(item).toMatchObject({ id: 'h:explicit.stat_124859000+explicit.stat_915769802', source: 'prefix', category: 'defence', text: '회피 #% 증가(특정) / 기절 한계치 #' })
+    expect(item.choices[0].range).toBe('39~42 / 95~136')
+  })
+  it('티어를 고르면 두 조건에 각 문장 값을 넣고, 역할은 늘 필수다', () => {
+    expect(affixPicksOf(item, 0, 'or:prefix')).toEqual([
+      { id: 'explicit.stat_124859000', value: { min: 39 }, role: 'and' },
+      { id: 'explicit.stat_915769802', value: { min: 95 }, role: 'and' },
+    ])
+    expect(affixPicksOf(item, -1, 'and').map((p) => p.value)).toEqual([null, null])
+  })
+  it('단일 줄과 하이브리드가 같은 조건을 넣으면 하나만 — 필수 쪽을 남긴다(독립 검토)', () => {
+    const single = { id: 'explicit.stat_124859000', value: { min: 101 }, role: 'or:prefix' }
+    const out = uniquePicks([single, ...affixPicksOf(item, 0, 'or:prefix')])
+    expect(out.map((p) => [p.id, p.role])).toEqual([['explicit.stat_124859000', 'and'], ['explicit.stat_915769802', 'and']])
   })
 })

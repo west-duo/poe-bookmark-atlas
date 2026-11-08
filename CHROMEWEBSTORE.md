@@ -79,8 +79,10 @@
 
 ## Privacy Policy
 
-**게시 URL**: https://github.com/seominugi/smng-poe-privacy
+**게시 URL**: https://github.com/west-duo/smng-poe-privacy
 서미누기 POE 확장 공용 저장소이며 "POE 북마크 아틀라스" 섹션을 포함한다.
+(2026-10-22 조직 이전 전에 등록한 값은 `github.com/seominugi/smng-poe-privacy` 이고 새 주소로 넘겨진다.
+웹스토어 개발자 콘솔의 처리방침 URL 은 다음 게시 때 위 주소로 바꾼다.)
 
 > POE 북마크 아틀라스는 사용자의 Path of Exile 거래소 검색을 브라우저 로컬 저장소에만
 > 저장합니다. 어떤 개인정보도 외부 서버로 전송하거나 제3자와 공유하지 않습니다. 가격 환산을

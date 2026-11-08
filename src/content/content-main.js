@@ -5,7 +5,9 @@ import { buildStatMap, buildStatIdIndex } from '../lib/statMap.js'
 import { buildFilterMap } from '../lib/filterMap.js'
 import { buildLeagueMap } from '../lib/leagueMap.js'
 import { enFetchPath, isSafeListingId, pickItem } from '../lib/enListing.js'
-import { nextDelay } from '../lib/tradeRate.js'
+import { nextDelay, retryAfterMs, waitSeconds } from '../lib/tradeRate.js'
+import { observeListings, uniqueSearchBody, validObserved } from '../lib/uniqueObserved.js'
+import { indexFromStatMap } from '../lib/modLineMatch.js'
 import { buildItemMap } from '../lib/itemMap.js'
 import { priceSnapshot } from '../lib/priceSnapshot.js'
 import { topIcon } from '../lib/topIcon.js'
@@ -739,6 +741,12 @@ function pobEnsureStyle() {
   @media (hover: hover) and (pointer: fine) { .ba-affix-ormin-step:not([disabled]):hover { background: rgba(92,195,242,0.35) !important; } }
   .ba-affix-ormin-step[disabled] { opacity: .3; cursor: default; }
   .ba-affix-ormin-step:focus-visible { outline: 2px solid #5cc3f2; outline-offset: 1px; }
+  /* 서판 남은 사용 횟수 — 조절 칸은 후보 최소 개수와 같은 모양, 줄은 목록 맨 위 */
+  .ba-affix-uses { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; padding: 8px 12px; border-radius: 10px;
+    background: rgba(0,0,0,0.22); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.07); color: #e4e0f2; font: 600 12.5px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; }
+  .ba-affix-uses.is-on { background: rgba(167,139,250,0.12); box-shadow: inset 0 0 0 1px rgba(167,139,250,0.35); }
+  .ba-affix-uses-name { margin-right: 4px; }
+  .ba-affix-uses-min, .ba-affix-uses-note { color: #a39fbb; font-weight: 500; }
   .ba-affix-sec-name { font: 600 11px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; letter-spacing: .06em; color: currentColor; white-space: nowrap; }
   .ba-affix-sec-count { font: 600 11px/1 ui-monospace, Consolas, monospace; color: #77728f; }
   .ba-affix-sec-line { flex: 1; height: 1px; background: linear-gradient(90deg, currentColor, transparent); opacity: .3; }
@@ -806,6 +814,11 @@ function pobEnsureStyle() {
   .ba-affix-twin { flex: none; white-space: nowrap; padding: 2px 7px; border-radius: 999px; border: 1px dashed rgba(201,196,220,0.32); color: #9d98b3; cursor: help;
     font: 600 10px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; white-space: nowrap; }
   .ba-affix-row.is-linked .ba-affix-twin { border-style: solid; border-color: rgba(92,195,242,0.5); color: #c9efff; }
+  /* 하이브리드 — 조건 둘이 한 속성. 종류 묶음 안에서 단일 속성과 나란히 서고, 이름 끝의 조용한 칩으로만 구분한다 */
+  .ba-affix-hybrid { display: inline-block; vertical-align: 1px; padding: 1px 6px; border-radius: 999px; cursor: help; white-space: nowrap;
+    background: rgba(243,207,139,0.12); box-shadow: inset 0 0 0 1px rgba(243,207,139,0.4); color: #f3cf8b;
+    font: 700 10px/1.3 system-ui, -apple-system, "Malgun Gothic", sans-serif; }
+  .ba-affix-role.is-void { visibility: hidden !important; }
   .ba-affix-src.is-corrupted { color: #f28aa0; }
   .ba-affix-have { font: 600 10.5px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #77728f; }
   /* 필수·OR·티어는 조용히 숨었다가 호버·포커스·선택 때만 나타난다 — 목록이 표처럼 빽빽해 보이지 않게. */
@@ -899,7 +912,7 @@ function pobEnsureStyle() {
   .ba-uq-item-base { font: 500 11.5px/1.2 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #8f89a8; }
   .ba-uq-item.has-picks .ba-uq-item-name::after { content: " ●"; color: #a78bfa; font-size: 9px; vertical-align: 2px; }
   .ba-uq-item-marks { display: inline-flex; align-items: center; gap: 5px; flex: none; }
-  .ba-uq-dot { width: 7px; height: 7px; border-radius: 50%; background: #ff6b6b; box-shadow: 0 0 0 2px rgba(255,107,107,0.2); }
+  .ba-uq-vaal { font: 700 10px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; font-style: normal; white-space: nowrap; color: #ff8a8a; padding: 2px 5px; border-radius: 5px; background: rgba(255,90,90,0.14); box-shadow: inset 0 0 0 1px rgba(255,107,107,0.35); }
   .ba-uq-corrupt { font: 600 10px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; font-style: normal; color: #f28aa0; padding: 2px 5px; border-radius: 5px; background: rgba(242,96,120,0.14); }
 
   .ba-uq-detail { min-width: 0; padding-bottom: 8px; }
@@ -912,14 +925,23 @@ function pobEnsureStyle() {
   .ba-uq-sec { margin-top: 8px; }
   .ba-uq-sec-title { margin: 0 0 3px; padding: 0 8px; font: 700 11.5px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #8f89a8; letter-spacing: .02em; }
   .ba-uq-sec[data-kind="m"] .ba-uq-sec-title { color: #ff8a8a; }
+  /* 바알 함양 절 — 위 고정 속성과 붙어 보이지 않게 띄우고 가는 선으로 가른다 */
+  .ba-uq-sec[data-kind="m"] { margin-top: 16px; padding-top: 10px; border-top: 1px solid rgba(255,107,107,0.22); }
   .ba-uq-row { min-height: 32px; padding: 3px 8px; border-radius: 9px; cursor: pointer; color: #b9c6ff; }
   @media (hover: hover) and (pointer: fine) { .ba-uq-row:hover { background: rgba(255,255,255,0.05); } }
   .ba-uq-row[data-kind="i"], .ba-uq-row[data-kind="mf"] { color: #c9c4dc; }
   .ba-uq-row.is-mutated { color: #ff8a8a; background: linear-gradient(90deg, rgba(255,90,90,0.1), rgba(255,90,90,0) 80%); }
   .ba-uq-row.is-on { background: linear-gradient(90deg, rgba(167,139,250,0.2), rgba(167,139,250,0.06)); box-shadow: inset 0 0 0 1px rgba(167,139,250,0.28); }
   .ba-uq-row.is-mutated.is-on { background: linear-gradient(90deg, rgba(255,90,90,0.22), rgba(255,90,90,0.06)); box-shadow: inset 0 0 0 1px rgba(255,107,107,0.45); }
-  .ba-uq-row:not([data-state="ok"]) { cursor: default; opacity: .55; }
+  .ba-uq-row[data-state="none"], .ba-uq-row[data-state="random"] { cursor: default; opacity: .55; }
   .ba-uq-row[data-state="random"] { opacity: .75; font-style: italic; }
+  .ba-uq-pool { margin: 2px 0 4px; padding: 4px 0 2px; border-left: 2px solid rgba(167,139,250,0.35); margin-left: 8px; }
+  .ba-uq-pool-head { margin: 0 0 2px; padding: 0 8px; display: flex; flex-wrap: wrap; gap: 2px 8px; align-items: baseline; font: 12px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #8f89a8; }
+  .ba-uq-pool-head b { color: #c9c4dc; font-weight: 700; }
+  .ba-uq-pool-group-title { margin: 6px 0 1px; padding: 0 8px; font: 700 11px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #8f89a8; letter-spacing: .02em; }
+  .ba-uq-pool-find { display: block; box-sizing: border-box; width: calc(100% - 16px); margin: 2px 8px 4px; padding: 5px 9px; border-radius: 8px; font: 12px/1.4 system-ui, -apple-system, "Malgun Gothic", sans-serif; color: #e6e3f5; background: rgba(255,255,255,0.05); border: 1px solid rgba(167,139,250,0.28); }
+  .ba-uq-pool-find:focus-visible { outline: 2px solid rgba(167,139,250,0.6); outline-offset: 1px; }
+  .ba-uq-row[hidden] { display: none; }
   .ba-uq-text { word-break: keep-all; line-height: 1.35; padding: 3px 0; }
   .ba-uq-check { appearance: none; -webkit-appearance: none; width: 16px; height: 16px; margin: 0; border-radius: 5px;
     border: 1.5px solid rgba(255,255,255,0.28); background: transparent; display: grid; place-items: center; cursor: pointer; }
@@ -942,10 +964,21 @@ function pobEnsureStyle() {
   .ba-uq-role[data-role="and"].is-on { color: #c7f5df !important; border-color: rgba(79,211,154,0.5) !important; background: rgba(79,211,154,0.16) !important; }
   .ba-uq-role[data-role="or"].is-on { color: #d3f0ff !important; border-color: rgba(92,195,242,0.5) !important; background: rgba(92,195,242,0.16) !important; }
   .ba-uq-role:focus-visible { outline: 2px solid #f5f3ff; outline-offset: 1px; }
-  .ba-uq-mf-toggle { margin: 8px 0 0 8px !important; padding: 5px 10px !important; border-radius: 8px !important; cursor: pointer;
-    border: 1px dashed rgba(255,107,107,0.45) !important; background: transparent !important; color: #ffb3b3 !important;
-    font: 600 11.5px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif !important; }
-  @media (hover: hover) and (pointer: fine) { .ba-uq-mf-toggle:hover { background: rgba(255,90,90,0.1) !important; } }
+  .ba-uq-orb { display: inline-block; width: 16px; height: 16px; margin-right: 4px; vertical-align: -4px; }
+  /* 바알 고유 고정 속성 — 함양하면 사라지는/생기는 줄의 칩 */
+  .ba-uq-imbue-chip { display: inline-block; margin-left: 6px; vertical-align: 1px; font: 700 10px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif; font-style: normal; white-space: nowrap; color: #ff8a8a; padding: 2px 5px; border-radius: 5px; background: rgba(255,90,90,0.14); box-shadow: inset 0 0 0 1px rgba(255,107,107,0.35); }
+  /* 「매물에서 속성 더 찾기」 — 누를 때만 거래소에 묻는다. 결과 한 줄은 조용한 글자 */
+  .ba-uq-observe { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 10px; }
+  .ba-uq-observe-btn { height: 28px; padding: 0 12px !important; margin: 0 !important; border-radius: 8px !important; cursor: pointer;
+    border: 1px solid rgba(232,142,72,0.5) !important; background: rgba(232,142,72,0.1) !important; color: #ffd2b0 !important;
+    font: 600 12px/1 system-ui, -apple-system, "Malgun Gothic", sans-serif !important; transition: background .15s ease, transform .16s cubic-bezier(0.23, 1, 0.32, 1); }
+  @media (hover: hover) and (pointer: fine) { .ba-uq-observe-btn:not([disabled]):hover { background: rgba(232,142,72,0.2) !important; } }
+  .ba-uq-observe-btn:active { transform: scale(0.97); }
+  .ba-uq-observe-btn[disabled] { opacity: .6; cursor: default; transform: none; }
+  .ba-uq-observe-btn:focus-visible { outline: 2px solid #a78bfa; outline-offset: 1px; }
+  @media (prefers-reduced-motion: reduce) { .ba-uq-observe-btn:active { transform: none; } }
+  .ba-uq-observe-msg { font-size: 12px; color: #a39fbb; }
+  .ba-uq-sec[data-kind="o"] .ba-uq-sec-title { color: #f0a870; }
   @media (max-width: 760px) {
     .ba-uq { grid-template-columns: 1fr; }
     .ba-uq-list { position: static; max-height: 220px; }
@@ -1349,6 +1382,76 @@ function ensureUniqueTable() {
   return null
 }
 
+// ── 고유 「매물에서 속성 더 찾기」 — 누를 때만 거래소에 묻는다(검색 1 + 가져오기 1). 결과는 리그별로 7일 둔다. ──
+// 같은 창구에서 연타해도 계정 규칙(6요청/4초)을 넘지 않게 간격을 두고, 429 면 막힌 시간을 알린다(찜 확인과 같은 규칙).
+const UNIQUE_OBS_KEY = 'uniqueObserved'
+const UNIQUE_OBS_TTL = 7 * 24 * 3600 * 1000
+const UNIQUE_OBS_MAX = 40 // 오래된 것부터 버린다
+const UNIQUE_OBS_SAMPLE = 10 // 한 번에 가져오는 매물 수(거래소 /fetch 한 번의 한도)
+const LISTING_ID = /^[A-Za-z0-9]{8,80}$/
+// 검색 id — 카카오 거래소는 조건을 gzip 한 긴 문자열(실측 202자, 2026-09-23)을 준다. 주소에 이어 붙이지 않고
+// `?query=` 값으로만(인코딩해) 쓰므로 isSafeSearchId(경로용, 64자)보다 넓게 받는다.
+const QUERY_ID = /^[A-Za-z0-9_-]{1,512}$/
+const obsGate = { lastAt: 0, lastSearchAt: 0, blockedUntil: 0, busy: false }
+// 검색 API 는 가져오기(/fetch)보다 규칙이 엄격하다 — 다른 고유를 연달아 눌러도 검색 사이를 넉넉히 띄운다(독립 검토 2026-09-23)
+const UNIQUE_OBS_SEARCH_GAP = 4000
+async function observeUnique(entry, { fresh = false } = {}) {
+  const league = leagueFromUrl()
+  const key = `${league}|${entry.n}|${entry.b}`
+  let store = {}
+  try {
+    const raw = (await chrome.storage.local.get(UNIQUE_OBS_KEY))[UNIQUE_OBS_KEY]
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) store = raw
+  } catch (_) {}
+  const hit = store[key]
+  const cached = hit && Number.isFinite(hit.at) ? validObserved(hit.data) : null
+  if (!fresh && cached && Date.now() - hit.at < UNIQUE_OBS_TTL) return { status: 'ok', data: cached, at: hit.at }
+  // 한 번에 하나만 — 연달아 누른 요청이 창구를 겹쳐 쓰지 않게(저장소를 읽고 쓰는 사이 결과가 덮이는 일도 막는다)
+  if (obsGate.busy) return { status: 'busy' }
+  const now = Date.now()
+  const gate = nextDelay(Math.max(obsGate.lastAt, obsGate.lastSearchAt + UNIQUE_OBS_SEARCH_GAP - 700), now, obsGate.blockedUntil)
+  if (gate.blocked) return { status: 'rate', wait: waitSeconds(gate.wait) }
+  obsGate.busy = true
+  try { return await observeFromTrade(entry, league, key, store, gate.wait) } finally { obsGate.busy = false }
+}
+
+async function observeFromTrade(entry, league, key, store, firstWait) {
+  if (firstWait) await new Promise((r) => setTimeout(r, firstWait))
+  const request = async (url, init) => {
+    obsGate.lastAt = Date.now()
+    const res = await fetch(url, init)
+    if (res.status === 429) { obsGate.blockedUntil = Date.now() + retryAfterMs(res.headers); throw Object.assign(new Error('rate'), { rate: true }) }
+    if (!res.ok) throw new Error('http ' + res.status)
+    return res.json()
+  }
+  try {
+    obsGate.lastSearchAt = Date.now()
+    const found = await request(searchApiPath(game, league), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(uniqueSearchBody(entry)),
+    })
+    const ids = (Array.isArray(found?.result) ? found.result : []).filter((x) => LISTING_ID.test(String(x))).slice(0, UNIQUE_OBS_SAMPLE)
+    if (typeof found?.id !== 'string' || !QUERY_ID.test(found.id)) { LOG('고유 매물 보충 — 검색 id 이상'); return { status: 'error' } }
+    if (!ids.length) return { status: 'empty' }
+    const gap = nextDelay(obsGate.lastAt, Date.now(), obsGate.blockedUntil)
+    if (gap.blocked) return { status: 'rate', wait: waitSeconds(gap.wait) }
+    await new Promise((r) => setTimeout(r, gap.wait))
+    const got = await request(`/api/trade2/fetch/${ids.join(',')}?query=${encodeURIComponent(found.id)}`)
+    const pool = entry.c && affixTable?.[entry.c] ? new Set([...(affixTable[entry.c].p ?? []), ...(affixTable[entry.c].s ?? [])]) : null
+    const index = indexFromStatMap(statMap, entry.c === 'Relic' ? 'sanctum' : 'explicit') // 유물 속성은 「성역」 그룹
+    const data = observeListings(got?.result, entry, { index, pool, statMap })
+    const at = Date.now()
+    store[key] = { at, data }
+    const keep = Object.entries(store).filter(([, v]) => v && Number.isFinite(v.at)).sort((a, b) => b[1].at - a[1].at).slice(0, UNIQUE_OBS_MAX)
+    try { await chrome.storage.local.set({ [UNIQUE_OBS_KEY]: Object.fromEntries(keep) }) } catch (_) { /* 저장 실패는 다음에 다시 묻는다 */ }
+    LOG('고유 매물 보충', JSON.stringify({ unique: entry.n, listings: data.count, lines: data.lines.length, resolved: Object.keys(data.resolved).length }))
+    return { status: 'ok', data, at }
+  } catch (err) {
+    if (err?.rate) return { status: 'rate', wait: waitSeconds(obsGate.blockedUntil - Date.now()) }
+    LOG('고유 매물 보충 실패', String(err))
+    return { status: 'error' }
+  }
+}
+
 function renderAffixButtons() {
   if (game !== 'poe2') return
   pobEnsureStyle()
@@ -1390,6 +1493,7 @@ async function openAffixesFor(group, btn) {
     // 고유 — 지금 검색이 고유 검색(희귀도 고유이거나 이름 지정)이면 고유 모드로 연다
     uniques: uniqueTable,
     startMode: rarityOfQuery(lastQuery) === 'unique' ? 'unique' : 'normal',
+    observeUnique,
     onAddUnique: async ({ unique, items }) => {
       const picks = items.map(({ id, value, role }) => ({ id, value, role }))
       // 유형은 그 고유의 유형으로, 희귀도는 「고유」로 **맞춘다**(비고유로 두면 결과가 비어 버린다).
@@ -1466,11 +1570,14 @@ function addResultMessage(res, label) {
   const spread = created.length || (Array.isArray(res?.roles) && res.roles.some((r) => r !== 'here'))
   if (added) parts.push(`속성 ${added}개를 ${spread ? '넣었어요' : `${label}에 넣었어요`}.${valued ? ` ${valued}개는 고른 값까지 채웠어요.` : ' 값은 티어 칩으로 고르세요.'}`)
   if (created.includes('and')) parts.push('필수 조건은 새 「모두 만족」 그룹에 넣었어요.')
+  // 고유 모드 — 문구가 같은 조건 둘을 「둘 중 하나」로 넣은 줄은 줄마다 개수 그룹을 하나씩 만든다(stat-adder 가 'alt' 로 알린다)
+  const altGroups = created.filter((c) => c === 'alt').length
   const orGroups = created.filter((c) => c === 'or').length
   const mins = Object.values(res?.orMin ?? {})
   const minText = mins.length && mins.every((n) => n === mins[0]) ? `(최소 ${mins[0]})` : ''
   if (orGroups > 1) parts.push(`후보 조건은 접두어·접미어로 나눠 새 「개수${minText}」 그룹 ${orGroups}개에 넣었어요.`)
   else if (orGroups) parts.push(`후보 조건은 새 「개수${minText}」 그룹에 넣었어요.`)
+  if (altGroups) parts.push(`문구가 같은 조건이 둘인 속성 ${altGroups}개는 「둘 중 하나」로 새 「개수(최소 1)」 그룹에 넣었어요.`)
   if (have) parts.push(`${have}개는 이미 그 그룹에 있어서 뺐어요.`)
   if (refused) parts.push(`${refused}개는 거래소가 받지 않았어요.`)
   const typed = Array.isArray(res?.typed) ? res.typed : []

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { verifyClassBridge, rangesByLine, hasValueConflict, preferLadder, lineTextVariants, specialAffixesOf, pruneTradeTwins, LOCAL_MARK } from '../scripts/build-tier-table.mjs'
+import { verifyClassBridge, rangesByLine, hasValueConflict, preferLadder, lineTextVariants, specialAffixesOf, pruneTradeTwins, shownDiffers, LOCAL_MARK } from '../scripts/build-tier-table.mjs'
 import { normalizeTradeText } from '../src/lib/statTextNorm.js'
 import { MOD_FILE_BY_POB_CLASS } from '../src/lib/itemClass.js'
 
@@ -241,5 +241,20 @@ describe('pruneTradeTwins — 문구가 같은 거래소 id 쌍', () => {
     const none = entry()
     expect(pruneTradeTwins(none, { category: null, rules, textOf }).dropped).toEqual([])
     expect(none.p).toHaveLength(3)
+  })
+})
+
+describe('shownDiffers — 날값이 화면 문장에 그대로 보이지 않는 줄', () => {
+  // poe-game-data v2026.10.13.1 실제 줄
+  const line = (kr, ...ranges) => ({ text: { kr }, stats: ranges.map((valueRange) => ({ valueRange })) })
+  it('처리기가 값을 바꾼 줄을 잡는다', () => {
+    expect(shownDiffers(line('기본 격노 상실이 (1-2)초 늦게 시작', [1000, 2000]))).toBe(true)
+    expect(shownDiffers(line('가시 치명타 명중 확률 (2-4)%', [200, 400]))).toBe(true)
+    expect(shownDiffers(line('타락 시 아이템이 인챈트 2개 획득', [1, 1]))).toBe(true)
+  })
+  it('부호만 다른 줄·여러 자리·숫자 없는 줄은 잡지 않는다', () => {
+    expect(shownDiffers(line('플레이어의 플라스크 충전량 (30-35)% 감소', [-35, -30]))).toBe(false)
+    expect(shownDiffers(line('생명력 최대치 100당 화염 가시 피해 2~4', [2, 2], [4, 4]))).toBe(false)
+    expect(shownDiffers(line('즉시 회복', [1, 1]))).toBe(false)
   })
 })

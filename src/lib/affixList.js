@@ -4,7 +4,7 @@
 // 목록은 **티어 표에 실린 능력치만** 담는다. 표에 없는 것(거래소 문구와 못 이은 것 · 표시 배율이 없는 것)은
 // 넣어도 칩이 안 뜨고, 일부는 거래소에 필터 자체가 없다. 없는 걸 흐리게 늘어놓기보다 뺀다.
 
-import { tiersFor, filterBounds } from './statTiers.js'
+import { tiersFor, filterBounds, CHIP_COUNT } from './statTiers.js'
 
 const own = (obj, key) => (obj && Object.hasOwn(obj, key) ? obj[key] : null)
 
@@ -63,6 +63,8 @@ export function affixListFor({ table, affixes, itemClass, statMap, ilvlMax = nul
     return out
   }
   const out = { status: 'ok', prefix: build(lists.p, 'prefix'), suffix: build(lists.s, 'suffix') }
+  // 하이브리드 — 따로 모으지 않고 같은 접두·접미 열에 넣는다(종류 묶음이 제자리에 둔다 — 사용자 결정 2026-09-23)
+  for (const it of hybridItems(lists.h, { statMap, ilvlMax, have, allowed: allowedIn('n') })) out[it.source].push(it)
   const bySide = (items) => ({ prefix: items.filter((it) => it.source === 'prefix'), suffix: items.filter((it) => it.source === 'suffix') })
   const onlyAllowed = (items, key) => {
     const allowed = allowedIn(key)
@@ -88,6 +90,79 @@ export function affixListFor({ table, affixes, itemClass, statMap, ilvlMax = nul
     if (items.length) out.mechanics.push({ pool: m.key, label: title ?? sentence, desc: title ? sentence : null, flow, items: flow ? items : [], ...(flow ? { prefix: [], suffix: [] } : bySide(items)) })
   }
   return out
+}
+
+/**
+ * 하이브리드 계열(statAffixes 의 `h`) → 목록 항목. 한 모드가 조건 둘을 갖는다(「회피 #% 증가 + 기절 한계치 #」).
+ * 항목은 조건 둘을 **함께** 넣는다 — 티어를 고르면 두 조건에 그 티어의 각 문장 값이 들어간다(affixPicksOf).
+ * 표식은 `h:<id1>+<id2>` — 같은 조건의 단일 속성 줄과 겹치지 않는다.
+ * @returns {AffixItem[]} `hybrid: { ids }` · 선택지마다 `parts`(문장별 {min,max,range}|null)
+ */
+function hybridItems(entries, { statMap, ilvlMax, have, allowed }) {
+  const out = []
+  for (const h of Array.isArray(entries) ? entries : []) {
+    const ids = Array.isArray(h?.ids) ? h.ids : []
+    const rows = Array.isArray(h?.r) ? h.r.filter((row) => Array.isArray(row?.v) && row.v.length === ids.length) : []
+    const texts = ids.map((id) => own(statMap, id))
+    if (ids.length < 2 || !rows.length || texts.some((t) => typeof t !== 'string')) continue
+    if (allowed && !ids.every((id) => allowed.has(id))) continue // 베이스를 골랐으면 두 조건 모두 그 베이스에 붙어야
+    const reach = ilvlMax == null ? rows : rows.filter((row) => row.l <= ilvlMax)
+    // 넣을 칸(최소·최대)은 문장마다 **모든 티어**를 보고 정한다 — 단일 속성(statTiers fillSideOf)과 같은 규칙.
+    // 티어마다 따로 정하면 아이템 레벨 상한을 움직일 때 같은 칩이 다른 칸에 들어간다(독립 검토)
+    const fills = ids.map((_, i) => (rows.every((row) => row.v[i]?.length && row.v[i].every((s) => s.every((n) => n < 0))) ? 'max' : 'min'))
+    const partOf = (slots, i) => (Array.isArray(slots) && slots.length ? { ...filterBounds(slots), fill: fills[i] } : null)
+    const key = `h:${ids.join('+')}`
+    out.push({
+      id: key, key: `normal:${key}`, text: texts.join(' / '), pool: 'normal',
+      source: h.k === 's' ? 'suffix' : 'prefix',
+      category: typeof h.c === 'string' ? h.c : 'other',
+      tiers: reach.length,
+      topLevel: (reach[0] ?? rows[0]).l,
+      have: ids.every((id) => have.has(id)),
+      single: rows.length === 1,
+      fill: 'min',
+      hybrid: { ids },
+      // 칩 개수는 단일 속성과 같다(CHIP_COUNT) — 줄마다 칩 줄 폭이 달라지면 세로선이 어긋난다
+      choices: reach.slice(0, CHIP_COUNT).map((row, i) => {
+        const parts = row.v.map(partOf)
+        return { t: i + 1, l: row.l, parts, range: parts.map((p) => (p ? p.range : '—')).join(' / ') }
+      }),
+    })
+  }
+  return out
+}
+
+/**
+ * 고른 항목 → 거래소에 넣을 조건들. 보통 항목은 하나, 하이브리드는 조건 둘 — 값은 고른 티어의 각 문장 값이다.
+ * 하이브리드는 **필수**로만 넣는다: 「개수」 그룹에 넣으면 한 모드가 두 번 세어져 「최소 N개」의 뜻이 달라진다.
+ * @param {AffixItem} item
+ * @param {number} choiceIndex
+ * @param {string} role 보통 항목의 역할(필수·후보 그룹)
+ * @returns {Array<{id:string, value:{min?:number,max?:number}|null, role:string}>}
+ */
+export function affixPicksOf(item, choiceIndex, role) {
+  if (!item?.hybrid) return [{ id: item.id, value: affixFilterValue(item, choiceIndex), role }]
+  const choice = choiceIndex >= 0 ? item.choices?.[choiceIndex] : null
+  return item.hybrid.ids.map((id, i) => {
+    const part = choice?.parts?.[i]
+    // 티어가 하나뿐이면 최소·최대 모두, 여럿이면 넣는 칸 하나 — 보통 항목(affixFilterValue)과 같은 규칙
+    const value = !part ? null : item.single ? { min: part.min, max: part.max } : { [part.fill]: part[part.fill] }
+    return { id, value, role: 'and' }
+  })
+}
+
+/**
+ * 넣을 조건 목록에서 같은 조건을 하나로 — 단일 줄과 그 조건이 든 하이브리드를 함께 고르면 같은 조건이 두 번 나온다(독립 검토).
+ * 필수(and)가 있으면 그것을 남긴다(하이브리드의 요구가 더 좁다). 둘 다 같은 역할이면 먼저 온 것.
+ * @param {Array<{id:string, role:string}>} picks
+ */
+export function uniquePicks(picks) {
+  const byId = new Map()
+  for (const p of picks) {
+    const prev = byId.get(p.id)
+    if (!prev || (p.role === 'and' && prev.role !== 'and')) byId.set(p.id, p)
+  }
+  return picks.filter((p) => byId.get(p.id) === p)
 }
 
 /**

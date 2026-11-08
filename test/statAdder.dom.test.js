@@ -271,3 +271,30 @@ describe('stat-adder — 요청 검사', () => {
     expect(log.select).toEqual([])
   })
 })
+
+// 거래소는 Vue 3 다(2026-11-01 라이브 3.5.34) — 요소에 __vue__ 가 없고 앱 컨테이너의 _vnode 에서 트리를 내려가야 찾는다.
+describe('stat-adder — Vue 3 거래소', () => {
+  it('__vue__ 없는 그룹도 컴포넌트 트리에서 찾아 넣는다', async () => {
+    const stats = [{ type: 'and', filters: [] }]
+    const group = document.createElement('div')
+    group.className = 'filter-group'
+    group.dataset.baGroupToken = 'gvue3token'
+    const inner = { $el: group } // 같은 요소를 뿌리로 쓰는 바깥 컴포넌트 — 메서드가 있는 쪽을 골라야 한다
+    const proxy = {
+      $el: group,
+      group: { id: 0 },
+      $store: { state: { persistent: { stats } } },
+      availableOptionsFlat: { 'explicit.stat_1': { id: 'explicit.stat_1' } },
+      selectFilter: ({ id }) => { stats[0].filters.push({ id }) },
+    }
+    const container = document.createElement('div')
+    container.appendChild(group)
+    document.body.appendChild(container)
+    container.__vue_app__ = {}
+    container._vnode = { component: { proxy: inner, subTree: { children: ['글자', null, { children: [{ component: { proxy, subTree: { children: [] } } }] }] } } }
+    const res = await run('rv3', 'gvue3token', [{ id: 'explicit.stat_1' }])
+    expect(res.error).toBeUndefined()
+    expect(res.added).toEqual(['explicit.stat_1'])
+    expect(stats[0].filters).toEqual([{ id: 'explicit.stat_1' }])
+  })
+})

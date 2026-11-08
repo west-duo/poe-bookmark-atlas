@@ -18,6 +18,7 @@
     { "text": "정신력 #% 증가", "scope": "armour", "keep": "explicit.stat_1416406066", "drop": "explicit.stat_3984865854", "totals": { "armour.chest nonunique": [402, 0] } },
     { "text": "최대 룬 수호 #", "scope": "weapon", "keep": "explicit.stat_3336230913", "drop": "explicit.stat_774059442", "totals": { "weapon nonunique": [27, 0] } },
     { "text": "최대 룬 수호 #", "scope": "accessory", "keep": "explicit.stat_3336230913", "drop": "explicit.stat_774059442", "totals": { "accessory.ring any": [619, 0] } },
+    { "text": "최대 퀄리티 #%", "scope": "accessory", "keep": "explicit.stat_2039822488", "drop": "explicit.stat_275498888", "totals": { "accessory.amulet any": [4702, 0], "accessory.ring any": [5164, 0] }, "note": "2026-10-14 Forbidden Rites 실측 — poe-game-data 가 에센스 「최대 퀄리티 +20%」 를 그리기 시작해(전에는 빈 {:+d} 자리라 매칭되지 않았다) 생긴 쌍" },
     { "text": "명중 시 #%의 확률로 출혈 유발", "scope": "jewel", "keep": "explicit.stat_2174054121", "drop": "explicit.stat_1519615863", "totals": { "jewel any": [10000, 0] } },
     { "text": "지도 내 환영 안개가 #초 추가로 지속되고 사라짐", "scope": "map.tablet", "keep": "explicit.stat_3226351972", "drop": "explicit.stat_1174954559", "totals": { "map.tablet any": [10000, 0] } },
     { "text": "지도에 아즈메리 혼백 1개 추가 등장", "scope": "map.tablet", "keep": "explicit.stat_358129101", "drop": "explicit.stat_775597083", "totals": { "map.tablet any": [10000, 1756] }, "note": "둘 다 매물이 있다 — drop 쪽 매물은 전부 감독관 서판(접미 (1-2)개 모드), 우리 줄은 모든 서판 접두 1개 모드" },

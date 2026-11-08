@@ -13,6 +13,7 @@ import { resolveLockedGameDataRoot } from './poe-game-data-lock.mjs'
 import { normalizeTradeText, modTextKeys, polarityFlipped } from '../src/lib/statTextNorm.js'
 import { MOD_FILE_BY_POB_CLASS, CLASS_BY_CATEGORY } from '../src/lib/itemClass.js'
 import { affixCategoryOf } from '../src/lib/affixCategory.js'
+import { LOCAL_MARK } from '../src/lib/modLineMatch.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const EXPLICIT_GROUP = '비고정' // 거래소 능력치 목록에서 일반 옵션 그룹
@@ -25,7 +26,7 @@ const SANCTUM_GROUP = '성역' // 유물 속성이 거래소에서 걸리는 그
 const GROUP_BY_CLASS = { Relic: SANCTUM_GROUP }
 const SKIP_FILES = new Set(['Map.json'])
 // 거래소 한국어 목록이 로컬 능력치에 붙이는 표시(영문 「(Local)」)
-export const LOCAL_MARK = '(특정)'
+export { LOCAL_MARK } // 정본은 src/lib/modLineMatch.js
 
 // 일반 풀 밖의 속성 버킷 → statAffixes 의 키. 에센스·합금은 보통 속성처럼 비고정 그룹 문구로 이어진다(2026-09-15 실측).
 // 순서는 속성 목록에 보이는 순서와 같다.
@@ -40,7 +41,10 @@ const KNOWN_BUCKETS = new Set(['normal', 'unique', ...SPECIAL_SOURCES.map((s) =>
 
 // 게임 데이터가 표시 배율을 적용하지 않은 스탯 — 값이 100배(흡수·치명타)·60배(재생)로 들어 있다.
 // 배율을 넣어 되살릴 수는 있으나 게임으로 검증하지 못해 v1 에서는 제외한다(설계 문서 §7).
-const UNSCALED_STAT = /(_permyriad|_per_minute)$|^local_critical_strike_chance$/
+// 단위 토막은 이름 끝이 아니어도 본다 — `local_flask_gain_X_charges_every_minute`(「1초마다 충전 9 획득」, 분당 9)·
+// `life_regeneration_rate_per_minute_%`·`…_permyriad_chance_to_cost_no_tribute` 가 끝 고정 규칙을 빠져나갔다(2026-10-14 독립 검토).
+// 옛 렌더러(poe-game-data v2026.10.14 까지)는 분당 → 초당 처리기를 몰라 문장도 날값이라 shownDiffers 로도 못 잡는다.
+const UNSCALED_STAT = /_(permyriad|per_minute|every_minute)(_|$)|^local_critical_strike_chance$/
 
 /**
  * 대응표가 양쪽 실물과 맞는지 본다. 문제 목록을 돌려주고, 비어 있으면 통과다.
@@ -183,9 +187,26 @@ export function preferLadder(prev, prevInferred, next, nextInferred) {
   return prev.length < next.length
 }
 
-/** 표시 배율이 적용되지 않아 값을 그대로 쓸 수 없는 모드인가. */
+/**
+ * 표시 배율이 적용되지 않아 값을 그대로 쓸 수 없는 모드인가.
+ *
+ * 이름(UNSCALED_STAT)만으로는 다 못 잡는다 — 모드 문장(text.kr)은 게임 처리기를 거친 화면 숫자인데 표 값은 날값(valueRange)이라,
+ * 처리기가 값을 바꾸는 스탯은 이름에 단위가 없어도 어긋난다(2026-10-14 v2026.10.13.1 실측: `rage_loss_delay_ms_+` 「(1-2)초」 ↔ 1000~2000,
+ * `base_thorns_critical_strike_chance` 「(2-4)%」 ↔ 200~400, `…_permyriad_chance_to_cost_no_tribute` 「(3-6)%」 ↔ 300~600,
+ * 문장에 숫자가 박힌 플래그 「인챈트 2개」 ↔ 1). 그래서 **날값이 문장에 그대로 보이지 않는 줄**이 있으면 같은 규칙으로 뺀다.
+ * 부호는 보지 않는다(negate 「#% 감소」 는 날값 −N 을 N 으로 그린다). 숫자가 없는 문장(「즉시 회복」)은 값 칸이 없어 보지 않는다.
+ */
 function isUnscaled(mod) {
-  return (mod.stats ?? []).some((s) => (s.stats ?? []).some((x) => UNSCALED_STAT.test(x.stat ?? '')))
+  return (mod.stats ?? []).some((s) => (s.stats ?? []).some((x) => UNSCALED_STAT.test(x.stat ?? '')) || shownDiffers(s))
+}
+
+/** 한 문장의 날값 중 화면 숫자에 없는 것이 있는가 */
+export function shownDiffers(line) {
+  const text = line?.text?.kr
+  if (!text) return false
+  const shown = new Set((text.match(/\d+(?:\.\d+)?/g) ?? []).map(Number))
+  if (!shown.size) return false
+  return (line.stats ?? []).some((x) => (x.valueRange ?? []).some((v) => !shown.has(Math.abs(v))))
 }
 
 /** 같은 요구 레벨에 값이 둘 이상이면 티어 순서를 정할 수 없다. */
@@ -251,7 +272,7 @@ async function main() {
   const affixes = {}
   const specialCounts = {}
   const unnamedBuckets = new Set()
-  let total = 0, matched = 0, unscaled = 0, conflicts = 0, skippedValueless = 0
+  let total = 0, matched = 0, unscaled = 0, conflicts = 0, skippedValueless = 0, hybridCount = 0
   const ambiguous = []
   const twinRulesPath = join(here, `trade-twins.${game}.json`)
   const twinRules = existsSync(twinRulesPath) ? JSON.parse(readFileSync(twinRulesPath, 'utf8')).rules ?? [] : []
@@ -314,6 +335,21 @@ async function main() {
         }
       })
     }
+    // 하이브리드 — 한 모드가 두 문장(조건 둘)을 갖는 계열. 위에서는 문장마다 단일 속성 사다리에 흡수되어 목록에서 사라졌다
+    // (26개 부위 · 101계열, 2026-09-23). 속성 목록에는 **계열 그대로** 싣고, 화면은 같은 접두·접미 열·종류 묶음에 섞어 보인다.
+    // 티어 표(statTiers)에는 싣지 않는다 — 거래소 행은 조건 하나씩이라 티어 칩은 문장별 사다리로 충분하다.
+    // 문장마다 거래소 조건이 **하나로만** 이어진 계열만 — 후보가 둘인 문장이 끼면 어느 조건인지 모른다.
+    const hybrids = []
+    for (const { cands, rows, affix, statNames } of families.values()) {
+      if (cands.length < 2 || !cands.every((ids) => ids.length === 1) || hasValueConflict(rows)) continue
+      const ids = cands.map((c) => c[0])
+      if (new Set(ids).size !== ids.length) continue
+      const sorted = [...rows].sort((a, b) => b.ilvl - a.ilvl)
+      // 값 칸이 없는 조건(「즉시 회복」 류)은 문장 값을 비운다 — 거래소에 넣을 칸이 없다(단일 사다리의 valueless 와 같은 규칙)
+      const valued = ids.map((id) => !classTrade.valueless.has(id))
+      hybrids.push({ k: affix === 'suffix' ? 's' : 'p', ids, c: affixCategoryOf(statNames[0], cls), r: sorted.map((row) => ({ l: row.ilvl, v: row.byLine.map((slots, i) => (valued[i] ? slots : [])) })) })
+    }
+    hybridCount += hybrids.length
     const special = {}
     const poolMods = { n: modIdsById } // 풀 키 → 능력치 id → 모드 id 목록 (basesOf 가 쓴다)
     for (const src of SPECIAL_SOURCES) {
@@ -355,6 +391,7 @@ async function main() {
       const bases = basesOf(data, poolMods)
       const entry = {
         ...affixListsOf(Object.keys(byStat), affixById), c: categoryById, ...special,
+        ...(hybrids.length ? { h: hybrids } : {}),
         ...(mechanics.length ? { m: mechanics } : {}),
         ...(bases.length ? { b: bases } : {}),
       }
@@ -377,6 +414,7 @@ async function main() {
   console.log(`  값 충돌로 버린 계열       : ${conflicts}`)
   console.log(`  후보 모호로 버린 모드     : ${ambiguous.length}`)
   console.log(`  값 칸이 없어 표에서 뺀 것 : ${skippedValueless}`)
+  console.log(`  하이브리드 계열(속성 목록) : ${hybridCount}`)
   for (const [bucket, n] of Object.entries(specialCounts)) {
     console.log(`  ${bucket} 속성 : 모드 ${n.total} → 부위별 능력치 ${n.matched}`)
   }
