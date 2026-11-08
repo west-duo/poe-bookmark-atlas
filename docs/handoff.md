@@ -1,5 +1,5 @@
 ---
-timestamp: 2026-11-01 (Asia/Seoul)
+timestamp: 2026-11-09 (Asia/Seoul)
 project: poe-bookmark-atlas
 ---
 
@@ -11,7 +11,7 @@ POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확
 
 - 거래소 Vue 3 전환 복구(#120)가 본 내용. 그동안 쌓인 #110(함양 칩) · #115(서판·허리띠 값 제외) · #113(최대 퀄리티 id 쌍, 산출물 변화 없음) · lock 갱신도 함께 실렸다.
 - 실제 확장 확인(2026-11-01, 개발 빌드): 시청자 URL 에서 넣기 토스트 정상, 개수 그룹 생성, Alt+A 드롭다운 열림. 영문 거래소는 미확인.
-- 권한 변경 없음 — 재승인 안내 불필요. 스토어 zip `deploy/poe-bookmark-atlas-0.15.2.zip` 업로드는 사용자 몫.
+- 권한 변경 없음 — 재승인 안내 불필요. 스토어 zip `deploy/poe-bookmark-atlas-0.15.2.zip` — **2026-11-09 스토어 배포 완료(사용자 확인)**.
 - `WHATS_NEW_VERSION` 은 0.15.1 그대로다(새 기능 투어 없음).
 
 ## 거래소 Vue 3 전환 — 속성 목록 넣기·단축키 복구 (2026-11-01)
