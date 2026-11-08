@@ -1389,9 +1389,6 @@ const UNIQUE_OBS_TTL = 7 * 24 * 3600 * 1000
 const UNIQUE_OBS_MAX = 40 // 오래된 것부터 버린다
 const UNIQUE_OBS_SAMPLE = 10 // 한 번에 가져오는 매물 수(거래소 /fetch 한 번의 한도)
 const LISTING_ID = /^[A-Za-z0-9]{8,80}$/
-// 검색 id — 카카오 거래소는 조건을 gzip 한 긴 문자열(실측 202자, 2026-09-23)을 준다. 주소에 이어 붙이지 않고
-// `?query=` 값으로만(인코딩해) 쓰므로 isSafeSearchId(경로용, 64자)보다 넓게 받는다.
-const QUERY_ID = /^[A-Za-z0-9_-]{1,512}$/
 const obsGate = { lastAt: 0, lastSearchAt: 0, blockedUntil: 0, busy: false }
 // 검색 API 는 가져오기(/fetch)보다 규칙이 엄격하다 — 다른 고유를 연달아 눌러도 검색 사이를 넉넉히 띄운다(독립 검토 2026-09-23)
 const UNIQUE_OBS_SEARCH_GAP = 4000
@@ -1430,7 +1427,7 @@ async function observeFromTrade(entry, league, key, store, firstWait) {
       method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(uniqueSearchBody(entry)),
     })
     const ids = (Array.isArray(found?.result) ? found.result : []).filter((x) => LISTING_ID.test(String(x))).slice(0, UNIQUE_OBS_SAMPLE)
-    if (typeof found?.id !== 'string' || !QUERY_ID.test(found.id)) { LOG('고유 매물 보충 — 검색 id 이상'); return { status: 'error' } }
+    if (!isSafeSearchId(found?.id)) { LOG('고유 매물 보충 — 검색 id 이상'); return { status: 'error' } }
     if (!ids.length) return { status: 'empty' }
     const gap = nextDelay(obsGate.lastAt, Date.now(), obsGate.blockedUntil)
     if (gap.blocked) return { status: 'rate', wait: waitSeconds(gap.wait) }

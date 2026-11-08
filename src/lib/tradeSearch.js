@@ -80,7 +80,10 @@ export function searchHashFromUrl(url, game) {
 }
 
 // 응답 id를 그대로 URL에 이어 붙이므로, 경로·쿼리·프로토콜로 탈출할 수 있는 문자는 전부 배제한다.
-const SAFE_ID = /^[A-Za-z0-9_-]{1,64}$/
+// 길이는 넉넉히 둔다 — 검색 id 는 10자 남짓한 해시만 오는 게 아니라, 조건 JSON 을 gzip→base64url 한
+// `H4sI…` 문자열로도 온다(2026-09-23 카카오 POE2 실측: 고유 이름 하나로 202자). 조건 수에 따라 길어지므로
+// 조건 200개 안팎까지 담는 4096 으로 둔다(로컬 gzip 계산치 — 512 는 약 16개에서 넘는다). 그 너머는 bad-id 로 실패한다.
+const SAFE_ID = /^[A-Za-z0-9_-]{1,4096}$/
 export function isSafeSearchId(id) {
   return typeof id === 'string' && SAFE_ID.test(id)
 }

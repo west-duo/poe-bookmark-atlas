@@ -64,7 +64,15 @@ describe('isSafeSearchId', () => {
     expect(isSafeSearchId('')).toBe(false)
     expect(isSafeSearchId(null)).toBe(false)
     expect(isSafeSearchId(123)).toBe(false)
-    expect(isSafeSearchId('a'.repeat(65))).toBe(false)
+    expect(isSafeSearchId('a'.repeat(4097))).toBe(false)
+  })
+  it('gzip base64url 형태의 긴 검색 id 도 통과 (카카오 POE2 실측 202자, 조건이 많으면 더 길다)', () => {
+    expect(isSafeSearchId('H4sI' + 'Ab9_-'.repeat(39) + 'xyz')).toBe(true)
+    expect(isSafeSearchId('a'.repeat(4096))).toBe(true)
+  })
+  it('긴 id 도 문자 검사는 그대로', () => {
+    expect(isSafeSearchId('H4sI' + 'a'.repeat(300) + '/../evil')).toBe(false)
+    expect(isSafeSearchId('H4sI' + 'a'.repeat(300) + '=')).toBe(false)
   })
 })
 
