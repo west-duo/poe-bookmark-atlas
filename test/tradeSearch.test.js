@@ -1,6 +1,16 @@
 // test/tradeSearch.test.js — 리그 이관(저장된 조건을 현재 리그로 재검색)용 순수 헬퍼
 import { describe, it, expect } from 'vitest'
-import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, searchHashFromUrl } from '../src/lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl } from '../src/lib/tradeSearch.js'
+
+describe('isSelfContainedSearchId', () => {
+  it('gzip 머리로 시작하는 id 만 — 실측 id 와 옛 짧은 해시', () => {
+    expect(isSelfContainedSearchId('H4sIAAAAAAAACnXMQQrCMBBG4bv86yDpNG0wV5EiwUYYiEmwU1FC7i7VpXX9')).toBe(true)
+    expect(isSelfContainedSearchId('EBo8vB8LC5')).toBe(false)
+    expect(isSelfContainedSearchId('h4sIAAAA')).toBe(false)
+    expect(isSelfContainedSearchId('H4sI/../evil')).toBe(false)
+    expect(isSelfContainedSearchId(null)).toBe(false)
+  })
+})
 
 describe('searchHashFromUrl', () => {
   it('poe2 저장 URL에서 검색 해시를 뽑는다', () => {

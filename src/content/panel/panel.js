@@ -1456,7 +1456,7 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
         title: latest.title, itemType: latest.itemType, name: latest.name,
         stats: latest.stats, statGroups: latest.statGroups,
         otherFilters: latest.otherFilters, priceFilter: latest.priceFilter, icon: latest.icon, snapshot: latest.snapshot,
-        dedupeKey: latest.dedupeKey, folderId: res.folderId,
+        dedupeKey: latest.dedupeKey, query: latest.query, folderId: res.folderId,
       },
       res.name || latest.title,
     )
