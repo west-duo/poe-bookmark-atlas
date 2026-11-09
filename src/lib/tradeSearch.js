@@ -75,7 +75,8 @@ export function searchHashFromUrl(url, game) {
   if (i < 0) return null
   let rest = parts.slice(i + 1)
   if (isPoe2(game) && rest[0] === 'poe2') rest = rest.slice(1)
-  const hash = rest[1] ? decodeURIComponent(rest[1]) : null // [0]=리그, [1]=해시
+  let hash = null // [0]=리그, [1]=해시
+  try { hash = rest[1] ? decodeURIComponent(rest[1]) : null } catch (_) { return null } // 잘못된 % 인코딩 — 목록 렌더에서도 불리므로 던지지 않는다
   return isSafeSearchId(hash) ? hash : null
 }
 

@@ -32,6 +32,12 @@ describe('searchHashFromUrl', () => {
     expect(searchHashFromUrl('', 'poe2')).toBeNull()
     expect(searchHashFromUrl(null, 'poe2')).toBeNull()
   })
+  // URL 파서는 깨진 %를 그대로 두므로 뒤의 decodeURIComponent 가 URIError 를 던진다.
+  // 이 함수는 목록을 그릴 때도 불려서(renderList migratable), 던지면 가져온 북마크 하나가 목록을 막는다.
+  it('잘못된 퍼센트 인코딩은 던지지 않고 null', () => {
+    expect(searchHashFromUrl('https://poe.kakaogames.com/trade2/search/poe2/Standard/%E0%A4%A', 'poe2')).toBeNull()
+    expect(searchHashFromUrl('https://poe.kakaogames.com/trade/search/Standard/abc%ZZ', 'poe1')).toBeNull()
+  })
 })
 
 describe('searchApiPath', () => {
