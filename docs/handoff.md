@@ -14,7 +14,8 @@ POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확
 - 흐름을 시험하려고 `migrateSearch` 를 `src/content/migrateSearch.js` 로 옮겼다(`content-main.js` 는 부작용 때문에 import 할 수 없다).
 - 실측(2026-11-09, 카카오): 없는 해시 POE2·POE1 모두 404 `{"error":{"code":1,"message":"Resource not found"}}`. 없는 리그도 같은 404 라, 리그 표기가 어긋나면 만료로 보인다. **POST 응답 id 는 지금 POE2 에서 `H4sI` 였다** — 짧은 해시는 옛 북마크에서만 나온다.
 - 미검증: 패널 토스트 end-to-end(개발 빌드 로드 필요), 영문 거래소의 만료 코드.
-- 남은 결함(이번 범위 밖): ① 다른 호스트에서 저장한 `H4sI` 북마크에 조건이 없으면 요청 없이 `expired` 안내(`migrateSearch.js` 2순위 분기) ② `leagueFromUrl`(`content-main.js`)의 `decodeURIComponent` 가 리그 칸의 깨진 인코딩에서 던진다(도달 여부 미확인).
+- 후속 수정: ① 다른 호스트에서 저장한 `H4sI` 북마크에 쓸 수 있는 조건이 없으면 만료 대신 새 사유 `other-host` 로 안내한다. ② 경로의 리그 해석을 `lib/tradeSearch.js` 의 `leagueFromPath` 로 옮겨 `searchHashFromUrl` 과 공유하고, 깨진 인코딩이면 던지지 않고 null 을 돌려준다. 패널에는 null 그대로 넘겨 최근 검색 리그로 판정하게 한다 — `Standard` 로 꾸미면 현재 리그로 믿겨 북마크가 확인 없이 옮겨질 수 있다(독립 검토). 패널 밖 호출부는 종전처럼 `Standard` 폴백.
+- 실측(2026-11-09, 카카오): 리그·해시 칸·API 경로의 깨진 인코딩은 모두 서버가 `400 Bad Request`(openresty)로 막는다. 그 오류 화면에도 콘텐츠 스크립트가 돌아, 수정 전 빌드는 패널 마운트 때 던져 패널이 뜨지 않았고 약 9초 뒤 '패널이 뜨지 않아…' 경고가 났다. 즉 정상 거래소 화면의 결함은 아니고, 수정 뒤에는 그 오류 화면에도 패널이 뜬다. 수정 빌드의 라이브 확인은 하지 못했다.
 
 ## 검색 id 길이 상한 64 → 4096 (2026-11-09, 미릴리즈)
 

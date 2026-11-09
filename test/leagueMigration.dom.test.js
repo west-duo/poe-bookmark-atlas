@@ -113,6 +113,17 @@ describe('내 리그 자동 판정 (화면의 리그 → 최근 검색)', () => 
     expect(calls.migrate.map((c) => c[1])).toEqual(['HC'])
   })
 
+  // 주소의 리그 칸이 깨져 읽지 못한 화면(leagueFromPath → null) — 최근 검색 리그로 옮겨야 한다.
+  it('화면의 리그를 읽지 못했으면 최근 검색으로 넘어간다', async () => {
+    await addHistory(baseRec({ league: 'HC', dedupeKey: 'h1' }))
+    await addBookmark(baseRec({ query: QUERY }), '내 북마크')
+    const { ui, calls } = makeUi('cancel', undefined, { league: null })
+    const list = await render(ui)
+    list.querySelector('.ba-migrate').click()
+    await tick(); await tick()
+    expect(calls.migrate.map((c) => c[1])).toEqual(['HC'])
+  })
+
   it('화면의 리그가 기준 — 그 리그 북마크엔 칩이 없고 다른 리그에만 붙는다', async () => {
     await addBookmark(baseRec({ league: 'HC' }), '하드코어것')
     await addBookmark(baseRec({ league: 'New', dedupeKey: 'k2' }), '지금리그')
@@ -270,6 +281,7 @@ describe('리그 이관 — ⋯ 액션과 실패 처리', () => {
     ['lookup', '확인해 주지 못했어요', false],
     ['auth', '로그인이 풀린', false],
     ['expired', '만료됐고', true],
+    ['other-host', '다른 거래소에서 만든', false],
   ])('실패 사유 %s 의 안내', async (reason, text, saysExpired) => {
     await addBookmark(baseRec({}), '내 북마크')
     const { ui, calls } = makeUi('cancel', { ok: false, reason })

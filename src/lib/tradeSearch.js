@@ -56,6 +56,27 @@ export function searchResultPath(game, league, id) {
   return isPoe2(game) ? `/trade2/search/poe2/${encLeague(league)}/${id}` : `/trade/search/${encLeague(league)}/${id}`
 }
 
+// /trade2/search/poe2/<리그>/<해시?> 또는 /trade/search/<리그>/<해시?> 에서 [리그, 해시]. 검색 경로가 아니면 null.
+function searchPathSegments(pathname, game) {
+  const parts = String(pathname).split('/').filter(Boolean)
+  const i = parts.indexOf('search')
+  if (i < 0) return null
+  const rest = parts.slice(i + 1)
+  return isPoe2(game) && rest[0] === 'poe2' ? rest.slice(1) : rest
+}
+
+/**
+ * 거래소 페이지 경로의 리그. 리그 칸이 없으면 'Standard', 읽을 수 없으면 null.
+ * 리그 칸의 % 인코딩이 깨진 주소는 서버가 400 으로 막지만(2026-11-09 카카오 실측) 그 오류 화면에도 콘텐츠 스크립트는 돈다 —
+ * 여기서 던지면 패널 마운트와 브리지 메시지 처리가 함께 죽는다. 'Standard' 로 꾸미지 않는 이유: 패널이 그 값을
+ * 사용자의 현재 리그로 믿어 북마크를 확인 없이 Standard 로 옮길 수 있다. null 이면 최근 검색 리그로 넘어간다(resolveCurrentLeague).
+ */
+export function leagueFromPath(pathname, game) {
+  const seg = searchPathSegments(pathname, game)
+  if (!seg || !seg[0]) return 'Standard'
+  try { return decodeURIComponent(seg[0]) } catch (_) { return null }
+}
+
 /**
  * 저장된 북마크 URL에서 검색 해시를 뽑는다.
  *
@@ -70,13 +91,10 @@ export function searchHashFromUrl(url, game) {
   let u
   try { u = new URL(String(url)) } catch (_) { return null }
   if (!isAllowedTradeUrl(u.href)) return null
-  const parts = u.pathname.split('/').filter(Boolean)
-  const i = parts.indexOf('search')
-  if (i < 0) return null
-  let rest = parts.slice(i + 1)
-  if (isPoe2(game) && rest[0] === 'poe2') rest = rest.slice(1)
+  const seg = searchPathSegments(u.pathname, game)
+  if (!seg) return null
   let hash = null // [0]=리그, [1]=해시
-  try { hash = rest[1] ? decodeURIComponent(rest[1]) : null } catch (_) { return null } // 잘못된 % 인코딩 — 목록 렌더에서도 불리므로 던지지 않는다
+  try { hash = seg[1] ? decodeURIComponent(seg[1]) : null } catch (_) { return null } // 잘못된 % 인코딩 — 목록 렌더에서도 불리므로 던지지 않는다
   return isSafeSearchId(hash) ? hash : null
 }
 

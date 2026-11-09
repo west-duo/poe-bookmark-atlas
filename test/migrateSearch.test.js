@@ -90,6 +90,15 @@ describe('migrateSearch — H4sI id (#124 동작 유지)', () => {
     expect(res.via).toBe('query')
     expect(fetchMock.mock.calls[0][1].method).toBe('POST')
   })
+  it.each([
+    ['조건 없음', undefined],
+    ['형식이 깨진 조건', { nope: 1 }],
+  ])('다른 호스트에 %s 이면 요청 없이 other-host — 만료가 아니다', async (_, query) => {
+    const fetchMock = stubFetch()
+    expect(await migrateSearch({ url: `https://www.pathofexile.com/trade2/search/poe2/Old/${H4SI}`, query }, 'New', ENV))
+      .toEqual({ ok: false, reason: 'other-host' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })
 
 describe('migrateSearch — 해시를 뽑을 수 없는 주소', () => {
