@@ -1,6 +1,23 @@
 // test/tradeSearch.test.js — 리그 이관(저장된 조건을 현재 리그로 재검색)용 순수 헬퍼
 import { describe, it, expect } from 'vitest'
-import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl } from '../src/lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, leagueFromPath } from '../src/lib/tradeSearch.js'
+
+describe('leagueFromPath', () => {
+  it.each([
+    ['/trade2/search/poe2/Standard/EBo8vB8LC5', 'poe2', 'Standard'],
+    ['/trade2/search/poe2/Fate%20of%20the%20Vaal', 'poe2', 'Fate of the Vaal'],
+    ['/trade/search/%ED%97%88%EC%83%81/abc123', 'poe1', '허상'],
+    ['/trade2/search/poe2', 'poe2', 'Standard'],
+    ['/trade2/exchange/poe2/Standard', 'poe2', 'Standard'],
+  ])('%s → %s', (path, game, league) => {
+    expect(leagueFromPath(path, game)).toBe(league)
+  })
+  // 실측: 카카오가 이 주소들을 400 으로 막아도 그 화면에 콘텐츠 스크립트가 돌고, 던지면 패널이 뜨지 않았다(2026-11-09).
+  // Standard 로 꾸미면 패널이 그 값을 현재 리그로 믿어 북마크를 Standard 로 옮길 수 있다.
+  it.each(['/trade2/search/poe2/%E0%A4%A', '/trade2/search/poe2/%ZZ', '/trade2/search/poe2/%'])('깨진 인코딩 %s 은 던지지 않고 null', (path) => {
+    expect(leagueFromPath(path, 'poe2')).toBeNull()
+  })
+})
 
 describe('isSelfContainedSearchId', () => {
   it('gzip 머리로 시작하는 id 만 — 실측 id 와 옛 짧은 해시', () => {

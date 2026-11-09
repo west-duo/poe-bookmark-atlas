@@ -12,7 +12,7 @@ import { buildItemMap } from '../lib/itemMap.js'
 import { priceSnapshot } from '../lib/priceSnapshot.js'
 import { topIcon } from '../lib/topIcon.js'
 import { parseExaltedPerDivine, baseFromPrice, divineFromPrice, baseCurrencyOf, basePerDivineOf, fmtCurAmount } from '../lib/currencyRates.js'
-import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, isAllowedTradeUrl } from '../lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, isAllowedTradeUrl, leagueFromPath } from '../lib/tradeSearch.js'
 import { migrateSearch as runMigrateSearch } from './migrateSearch.js'
 import { mergeConditionSet, SET_FAIL } from '../lib/conditionSet.js'
 import { renderSetsBar } from '../lib/pageSets.js'
@@ -34,15 +34,7 @@ const LOG = (...a) => console.log('[BA]', ...a)
 const game = location.pathname.startsWith('/trade2') ? 'poe2' : 'poe1'
 LOG('content-main loaded', { game, url: location.href })
 
-function leagueFromUrl() {
-  // /trade2/search/poe2/<League>/<hash?>  또는  /trade/search/<League>/<hash?>
-  const parts = location.pathname.split('/').filter(Boolean)
-  const i = parts.indexOf('search')
-  if (i < 0) return 'Standard'
-  let rest = parts.slice(i + 1)
-  if (game === 'poe2' && rest[0] === 'poe2') rest = rest.slice(1)
-  return decodeURIComponent(rest[0] || 'Standard')
-}
+const leagueFromUrl = () => leagueFromPath(location.pathname, game) || 'Standard'
 
 // 거래소 데이터는 **사용자가 보고 있는 호스트**에서 받아야 한다 — items 의 type 이 로컬라이즈된 이름이라
 // 호스트를 고정하면 유형 이름이 통째로 어긋난다(lib/tradeSearch.js tradeApiOrigin 주석 참조).
@@ -1905,7 +1897,7 @@ function hideTourDemo() {
 initFuzzyPrefix()
 const panel = mountPanel({
   game,
-  league: leagueFromUrl(),
+  league: leagueFromPath(location.pathname, game), // 못 읽으면 null — 패널이 Standard 를 현재 리그로 믿지 않게
   getLeagueMap: () => leagueMap,
   getCurrentSearch: () => (lastQuery ? { query: lastQuery, league: lastQueryLeague || leagueFromUrl() } : null),
   migrateSearch,

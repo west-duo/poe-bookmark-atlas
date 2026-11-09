@@ -52,7 +52,12 @@ export async function migrateSearch(rec, league, { game, origin, log = () => {} 
   }
   // 2순위 — 저장된 조건으로 새 검색 생성
   const s = sanitizeQuery(rec && rec.query)
-  if (!s.ok) { log('리그 이관 — 조건 없음/형식 불량', s.reason); return { ok: false, reason: lookupFail || (hash ? 'expired' : s.reason) } }
+  if (!s.ok) {
+    log('리그 이관 — 조건 없음/형식 불량', s.reason)
+    // 조건을 담은 id 가 여기까지 왔으면 다른 호스트의 링크다. 조회한 적도 없고 만료될 것도 없으니 만료라고 하지 않는다.
+    if (isSelfContainedSearchId(hash)) return { ok: false, reason: 'other-host' }
+    return { ok: false, reason: lookupFail || (hash ? 'expired' : s.reason) }
+  }
   let res
   try {
     res = await fetch(searchApiPath(game, league), {
