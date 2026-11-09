@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "POE 북마크 아틀라스",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "description": "POE 거래소 검색 북마크 + 히스토리 관리 — 시세 스냅샷 포함",
   "icons": {
     "16": "src/icons/icon16.png",
