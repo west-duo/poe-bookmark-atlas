@@ -1186,6 +1186,9 @@ function bindAll(listEl, ui, ctx) {
   // 패널 overflow:hidden 회피: .ba-actions-pop은 position:fixed(.ba-root의 transform 때문에 .ba-root 기준) + JS 위치·클램프.
   const hidePop = (p) => { p.hidden = true; const r = p.closest('.ba-row'); if (r) { r.style.contentVisibility = ''; r.style.transform = ''; r.style.transition = '' } } // containment·hover transform·transition 원복
   const closeActionsPops = () => listEl.querySelectorAll('.ba-actions-pop:not([hidden])').forEach(hidePop)
+  // 메뉴 안 클릭은 아래 '밖 클릭 닫기'에서 제외되므로, 누르면 끝나는 항목은 직접 닫는다 — 안 닫으면 결과 토스트 옆에 메뉴가 남는다.
+  listEl.querySelectorAll('.ba-actions-pop .ba-migrate, .ba-actions-pop .ba-copy, .ba-actions-pop .ba-live').forEach((a) =>
+    a.addEventListener('click', closeActionsPops))
   listEl.querySelectorAll('.ba-more').forEach((m) => m.addEventListener('click', (e) => {
     e.stopPropagation()
     const row = m.closest('.ba-row'); const rootEl = m.closest('.ba-root')

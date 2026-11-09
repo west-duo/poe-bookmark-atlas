@@ -608,7 +608,9 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
       t.appendChild(b)
     }
     t.hidden = false
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, acts.length ? 6000 : 2200)
+    // 글자당 90ms — 짧은 안내는 2.2초 그대로, 두 줄짜리 실패 안내는 읽을 시간을 준다.
+    const readMs = Math.min(6000, Math.max(2200, String(msg).length * 90))
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true }, acts.length ? 6000 : readMs)
   }
 
   // 패널 내 북마크 검색창 포커스 단축키 (Alt+K) — 접혀 있으면 펼친 뒤 포커스
