@@ -12,7 +12,7 @@ import { buildItemMap } from '../lib/itemMap.js'
 import { priceSnapshot } from '../lib/priceSnapshot.js'
 import { topIcon } from '../lib/topIcon.js'
 import { parseExaltedPerDivine, baseFromPrice, divineFromPrice, baseCurrencyOf, basePerDivineOf, fmtCurAmount } from '../lib/currencyRates.js'
-import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, searchHashFromUrl, isAllowedTradeUrl } from '../lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, isAllowedTradeUrl } from '../lib/tradeSearch.js'
 import { mergeConditionSet, SET_FAIL } from '../lib/conditionSet.js'
 import { renderSetsBar } from '../lib/pageSets.js'
 import { addHistory, markUsedByUrl, ensureSchema, backfillQuery, isWatched, addWatch, removeWatch, listWatched, listConditionSets, WATCH_CAP } from '../store/store.js'
@@ -1800,15 +1800,22 @@ async function handleBridgeMessage(e) {
 //   2026-07-22) 그 해시가 서버에 살아 있으면 이걸로 끝난다 — 조건을 저장하지 않은 옛 북마크까지 복구된다.
 // 2순위: 해시가 만료됐으면 저장된 조건(raw query)으로 새 검색을 생성(공식 엔드포인트 POST,
 //   cross-site-receiver.js와 동일 방식). 필터 UI를 프로그래밍으로 채우지 않는 이유는 lib/tradeSearch.js 헤더 참조.
-// 사용자 클릭 1회 = 요청 1~2회. 일괄 이관은 제공하지 않는다 — GGG rate limit(429)에 걸리면 거래소 검색 자체가 막힌다.
+// 사용자 클릭 1회 = 요청 0~2회. 일괄 이관은 제공하지 않는다 — GGG rate limit(429)에 걸리면 거래소 검색 자체가 막힌다.
 async function migrateSearch(rec, league) {
   const resultUrl = (id) => {
     const url = location.origin + searchResultPath(game, league, id)
     return isAllowedTradeUrl(url) ? url : null
   }
-  // 1순위 — 기존 해시를 목표 리그에서 조회해 보고, 살아 있으면 그 URL로 간다(새 검색을 만들지 않는다)
   const hash = searchHashFromUrl(rec && rec.url, game)
-  if (hash) {
+  // 조건을 담은 id 는 조회하면 늘 404 다 — 확인 없이 리그만 바꾼다(isSelfContainedSearchId 주석).
+  // 그 id 를 만든 호스트에서만 그렇게 한다: 같은 호스트의 페이지는 자기가 만든 주소를 풀 수 있지만(POST 로 받는 id 도
+  // 같은 형식이라 새 검색이 더 안전하지 않다), 다른 호스트로 옮기면 로컬라이즈된 유형 이름이 어긋난다(AGENTS.md 글로벌 지원 절).
+  if (isSelfContainedSearchId(hash) && new URL(rec.url).origin === location.origin) {
+    const url = resultUrl(hash)
+    if (url) { LOG('리그 이관 — 조건을 담은 id 재사용'); return { ok: true, url, via: 'url' } }
+  }
+  // 1순위 — 기존 해시를 목표 리그에서 조회해 보고, 살아 있으면 그 URL로 간다(새 검색을 만들지 않는다)
+  if (hash && !isSelfContainedSearchId(hash)) {
     try {
       const res = await fetch(`${searchApiPath(game, league)}/${hash}`, { headers: { Accept: 'application/json' } })
       if (res.status === 429) return { ok: false, reason: 'rate' }

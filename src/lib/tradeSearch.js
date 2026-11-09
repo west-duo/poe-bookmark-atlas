@@ -89,6 +89,15 @@ export function isSafeSearchId(id) {
 }
 
 /**
+ * 조건을 스스로 담은 검색 id 인가 — gzip 머리(1f 8b 08)를 base64 로 쓰면 `H4sI` 로 시작한다.
+ * 이런 id 는 서버에 저장된 검색이 아니다. API 조회(GET)는 리그와 무관하게 404 이지만, 거래소 페이지는
+ * 주소의 id 를 직접 풀어 그 리그로 검색한다(2026-11-09 카카오 POE2 실측) — 만료될 것도 없다.
+ */
+export function isSelfContainedSearchId(id) {
+  return isSafeSearchId(id) && id.startsWith('H4sI')
+}
+
+/**
  * 검색 바디 정규화 — 거래소 API로 보내기 전 항상 통과시킨다.
  * 가져오기(JSON import)로 들어온 북마크의 query는 남이 만든 데이터이므로,
  * ① 최상위 키를 query·sort로 화이트리스트 ② 직렬화 크기 상한 ③ JSON 왕복으로 비직렬화 값 제거.
