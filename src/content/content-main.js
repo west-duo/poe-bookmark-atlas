@@ -12,7 +12,8 @@ import { buildItemMap } from '../lib/itemMap.js'
 import { priceSnapshot } from '../lib/priceSnapshot.js'
 import { topIcon } from '../lib/topIcon.js'
 import { parseExaltedPerDivine, baseFromPrice, divineFromPrice, baseCurrencyOf, basePerDivineOf, fmtCurAmount } from '../lib/currencyRates.js'
-import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, isAllowedTradeUrl } from '../lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, isAllowedTradeUrl } from '../lib/tradeSearch.js'
+import { migrateSearch as runMigrateSearch } from './migrateSearch.js'
 import { mergeConditionSet, SET_FAIL } from '../lib/conditionSet.js'
 import { renderSetsBar } from '../lib/pageSets.js'
 import { addHistory, markUsedByUrl, ensureSchema, backfillQuery, isWatched, addWatch, removeWatch, listWatched, listConditionSets, WATCH_CAP } from '../store/store.js'
@@ -1795,58 +1796,8 @@ async function handleBridgeMessage(e) {
   }
 }
 
-// ── 리그 이관 — 저장된 검색을 목표 리그에서 다시 열 수 있게 만든다 ──
-// 1순위: 저장된 URL의 리그 세그먼트만 교체. 검색 해시는 조건만 담고 리그는 경로가 정하므로(사용자 확인,
-//   2026-07-22) 그 해시가 서버에 살아 있으면 이걸로 끝난다 — 조건을 저장하지 않은 옛 북마크까지 복구된다.
-// 2순위: 해시가 만료됐으면 저장된 조건(raw query)으로 새 검색을 생성(공식 엔드포인트 POST,
-//   cross-site-receiver.js와 동일 방식). 필터 UI를 프로그래밍으로 채우지 않는 이유는 lib/tradeSearch.js 헤더 참조.
-// 사용자 클릭 1회 = 요청 0~2회. 일괄 이관은 제공하지 않는다 — GGG rate limit(429)에 걸리면 거래소 검색 자체가 막힌다.
-async function migrateSearch(rec, league) {
-  const resultUrl = (id) => {
-    const url = location.origin + searchResultPath(game, league, id)
-    return isAllowedTradeUrl(url) ? url : null
-  }
-  const hash = searchHashFromUrl(rec && rec.url, game)
-  // 조건을 담은 id 는 조회하면 늘 404 다 — 확인 없이 리그만 바꾼다(isSelfContainedSearchId 주석).
-  // 그 id 를 만든 호스트에서만 그렇게 한다: 같은 호스트의 페이지는 자기가 만든 주소를 풀 수 있지만(POST 로 받는 id 도
-  // 같은 형식이라 새 검색이 더 안전하지 않다), 다른 호스트로 옮기면 로컬라이즈된 유형 이름이 어긋난다(AGENTS.md 글로벌 지원 절).
-  if (isSelfContainedSearchId(hash) && new URL(rec.url).origin === location.origin) {
-    const url = resultUrl(hash)
-    if (url) { LOG('리그 이관 — 조건을 담은 id 재사용'); return { ok: true, url, via: 'url' } }
-  }
-  // 1순위 — 기존 해시를 목표 리그에서 조회해 보고, 살아 있으면 그 URL로 간다(새 검색을 만들지 않는다)
-  if (hash && !isSelfContainedSearchId(hash)) {
-    try {
-      const res = await fetch(`${searchApiPath(game, league)}/${hash}`, { headers: { Accept: 'application/json' } })
-      if (res.status === 429) return { ok: false, reason: 'rate' }
-      if (res.ok) {
-        const url = resultUrl(hash)
-        if (url) { LOG('리그 이관 — 기존 해시 재사용', hash); return { ok: true, url, via: 'url' } }
-      } else LOG('리그 이관 — 해시 만료 추정, 조건 재생성으로 폴백', res.status)
-    } catch (err) { LOG('리그 이관 — 해시 조회 실패, 폴백', String(err)) }
-  }
-  // 2순위 — 저장된 조건으로 새 검색 생성
-  const s = sanitizeQuery(rec && rec.query)
-  if (!s.ok) { LOG('리그 이관 — 조건 없음/형식 불량', s.reason); return { ok: false, reason: hash ? 'expired' : s.reason } }
-  let res
-  try {
-    res = await fetch(searchApiPath(game, league), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify(s.query),
-    })
-  } catch (err) { LOG('리그 이관 네트워크 오류', String(err)); return { ok: false, reason: 'network' } }
-  if (res.status === 429) return { ok: false, reason: 'rate' } // 거래소 요청 제한 — 잠시 후 재시도 안내
-  if (res.status === 401 || res.status === 403) return { ok: false, reason: 'auth' }
-  if (!res.ok) { LOG('리그 이관 실패 HTTP', res.status); return { ok: false, reason: 'http' } }
-  let data = null
-  try { data = await res.json() } catch (_) {}
-  const id = data && data.id
-  if (!isSafeSearchId(id)) { LOG('리그 이관 — 응답 id 이상'); return { ok: false, reason: 'bad-id' } }
-  const url = resultUrl(id)
-  if (!url) { LOG('리그 이관 — 허용되지 않은 URL'); return { ok: false, reason: 'bad-url' } }
-  return { ok: true, url, total: (data && data.total) ?? null, via: 'query' }
-}
+// ── 리그 이관 — 흐름과 실패 사유 판정은 ./migrateSearch.js ──
+const migrateSearch = (rec, league) => runMigrateSearch(rec, league, { game, origin: location.origin, log: LOG })
 
 // ── 조건 묶음 얹기 — 저장된 조건 뭉치를 지금 검색에 더해 새 검색을 만든다 ──
 // 지금 화면의 '실행되지 않은' 입력은 우리가 알 수 없다(page-bridge는 실행된 검색만 캡처).

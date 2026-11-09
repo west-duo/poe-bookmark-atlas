@@ -264,6 +264,23 @@ describe('리그 이관 — ⋯ 액션과 실패 처리', () => {
     expect(after.league).toBe('Old')
   })
 
+  // 사용자가 포기할지 다시 시도할지가 이 문구로 갈린다 — 만료만 '직접 다시 만들라'고 말한다.
+  it.each([
+    ['network', '연결하지 못했어요', false],
+    ['lookup', '확인해 주지 못했어요', false],
+    ['auth', '로그인이 풀린', false],
+    ['expired', '만료됐고', true],
+  ])('실패 사유 %s 의 안내', async (reason, text, saysExpired) => {
+    await addBookmark(baseRec({}), '내 북마크')
+    const { ui, calls } = makeUi('cancel', { ok: false, reason })
+    const list = await render(ui)
+    list.querySelector('.ba-migrate').click()
+    await new Promise((r) => setTimeout(r, 20))
+    const last = calls.toast[calls.toast.length - 1]
+    expect(last).toContain(text)
+    expect(last.includes('만료')).toBe(saysExpired)
+  })
+
   it('연타해도 요청은 한 번만 나간다', async () => {
     await addBookmark(baseRec({ query: QUERY }), '내 북마크')
     const { ui, calls } = makeUi('cancel')

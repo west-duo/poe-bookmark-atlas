@@ -7,6 +7,15 @@ project: poe-bookmark-atlas
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
 
+## 리그 이관 실패 사유 — 일시 오류를 만료로 안내하지 않음 (2026-11-09, 미릴리즈)
+
+- `searchHashFromUrl` 이 잘못된 퍼센트 인코딩(`%E0%A4%A`)에서 `URIError` 를 던졌다 — 목록 렌더(`migratable`)에서도 불리는 함수다. 이제 null.
+- 짧은 해시 조회 실패를 사유로 나눈다: 404 → `expired` · 네트워크 오류 → `network` · 401/403 → `auth` · 그 밖 → `lookup`(새 문구). 조건이 있으면 종전대로 POST 로 폴백하고, 사유는 조건이 없을 때만 쓰인다. POST 네트워크 오류는 원래부터 `network` 였다.
+- 흐름을 시험하려고 `migrateSearch` 를 `src/content/migrateSearch.js` 로 옮겼다(`content-main.js` 는 부작용 때문에 import 할 수 없다).
+- 실측(2026-11-09, 카카오): 없는 해시 POE2·POE1 모두 404 `{"error":{"code":1,"message":"Resource not found"}}`. 없는 리그도 같은 404 라, 리그 표기가 어긋나면 만료로 보인다. **POST 응답 id 는 지금 POE2 에서 `H4sI` 였다** — 짧은 해시는 옛 북마크에서만 나온다.
+- 미검증: 패널 토스트 end-to-end(개발 빌드 로드 필요), 영문 거래소의 만료 코드.
+- 남은 결함(이번 범위 밖): ① 다른 호스트에서 저장한 `H4sI` 북마크에 조건이 없으면 요청 없이 `expired` 안내(`migrateSearch.js` 2순위 분기) ② `leagueFromUrl`(`content-main.js`)의 `decodeURIComponent` 가 리그 칸의 깨진 인코딩에서 던진다(도달 여부 미확인).
+
 ## 검색 id 길이 상한 64 → 4096 (2026-11-09, 미릴리즈)
 
 - 카카오가 조건을 gzip→base64url 한 긴 id 를 준다(2026-09-23 실측: 고유 이름 하나로 202자). `isSafeSearchId` 가 64자까지만 받아 긴 id 면 `applyConditionSet`·`migrateSearch` 새 검색이 `bad-id`, `searchHashFromUrl` 은 null 이 된다.
