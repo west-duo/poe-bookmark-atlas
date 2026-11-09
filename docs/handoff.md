@@ -7,6 +7,13 @@ project: poe-bookmark-atlas
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
 
+## 0.15.3 릴리즈 (2026-11-09)
+
+- 실린 것: #123(검색 id 길이) · #124(`H4sI` 이관·저장 버튼 조건) · #125·#126(실패 사유 구분·깨진 주소) · #128(토스트 시간·⋯ 메뉴). 아래 세 절의 「미릴리즈」는 이 버전으로 나갔다.
+- **사용자 결정(2026-11-09): 로그인된 거래소에서 `query` 없는 `H4sI` 북마크 이관(#124 검증 원장 항목)을 확인하지 않고 릴리즈한다.** 문제가 보이면 사용자 제보로 대응한다. 제보가 오면 이 흐름부터 본다.
+- 권한 변경 없음 — 재승인 안내 불필요. `WHATS_NEW_VERSION` 은 0.15.1 그대로다(새 기능 투어 없음).
+- 스토어 업로드는 사용자 몫(`poe-bookmark-atlas-0.15.3.zip`, 노트 `RELEASE-0.15.3.md`). 세션 격리로 메인 체크아웃 `deploy/` 에 못 넣어 릴리즈한 세션 워크트리 `.claude/worktrees/migrate-cross-host-league-decode/deploy/` 에 만들었다 — 메인 `deploy/` 로 옮겨 둘 것.
+
 ## 리그 이관 실패 사유 — 일시 오류를 만료로 안내하지 않음 (2026-11-09, 미릴리즈)
 
 - `searchHashFromUrl` 이 잘못된 퍼센트 인코딩(`%E0%A4%A`)에서 `URIError` 를 던졌다 — 목록 렌더(`migratable`)에서도 불리는 함수다. 이제 null.
