@@ -137,21 +137,15 @@ export function koreanizePoolNames(u, names) {
  * v2026.10.14 부터). 옛 번역 사전(poe-kr-en-dictionary)의 패시브 트리 사전을 읽던 자리다 — 사전 저장소 은퇴(2026-10-19).
  * 그 사전과 판이 함께 가진 이름 1,606개 중 16개가 판 표기와 달랐다(사전이 틀림 — Defensive Stance 「공격 태세」 → 「방어 태세」),
  * 사전에만 있는 2,026개는 지금 트리에 없는 이름이다.
- * 판 체크아웃을 못 찾거나 lock 의 판에 파일이 없으면(v2026.10.13.1 이하) 빈 맵 — 이름은 영문 그대로 남는다(사전이 없을 때와 같다).
  * 같은 영문의 노드가 여럿이면 처음 것을 쓴다.
+ * 판 체크아웃을 못 찾거나(판이 lock 과 다름 포함) 파일이 없으면 **멈춘다** — 다른 빌드 스크립트와 같다. 예전에는 빈 맵으로 넘어갔는데,
+ * 매물 관찰의 키스톤 대조(`observedId`)가 이 이름에 기대게 된 뒤(2026-11-16)로는 빈 맵이면 살점 도가니 풀이 조용히 빈다(독립 검토).
  */
 function passiveNames() {
-  let root
-  try {
-    root = resolveLockedGameDataRoot({ startDir: here })
-  } catch (err) {
-    console.warn(`  ⚠ 패시브 이름: poe-game-data 판을 못 찾아 영문으로 둔다 — ${err.message}`)
-    return new Map()
-  }
+  const root = resolveLockedGameDataRoot({ startDir: here })
   const f = join(root, 'poe2', 'passives.json')
   if (!existsSync(f)) {
-    console.warn(`  ⚠ 패시브 이름: lock 판 ${DATA_LOCK.snapshot} 에 poe2/passives.json 이 없어 영문으로 둔다 — lock 을 v2026.10.14 이상으로 올리면 한글이 된다`)
-    return new Map()
+    throw new Error(`패시브 이름: lock 판 ${DATA_LOCK.snapshot} 에 poe2/passives.json 이 없습니다 (${f})`)
   }
   const names = new Map()
   for (const row of JSON.parse(readFileSync(f, 'utf8')).passives ?? []) {
@@ -299,10 +293,26 @@ let STATS = null // 무작위 풀·스킬 부여용 — main 이 채운다
 let DESECRATED_D = null // 지금 만드는 고유 부위의 훼손된 속성 표(statAffixes[c].d) — main 이 고유마다 바꾼다
 let PAGE = null // 지금 만드는 고유의 개별 페이지 풀 — main 이 고유마다 바꾼다
 const PAGE_USED = { page: false } // 무작위 자리가 페이지 표를 썼나 — 안 썼으면 main 이 applyUnusedPage
+/**
+ * 고정 줄의 후보 중 선택형 조건(`…|n`)을 걷어 낸다 — 보통 조건이 **하나만** 남을 때만.
+ * 카카오 거래소가 살점 도가니 키스톤 선택지(`explicit.stat_3831171903|n`)를 한글로 옮기면서(2026-11-15 실측, 9-25 에는 영문)
+ * 조프리의 성역 「맹신자의 서약」 같은 고정 키스톤 줄이 전용 조건과 그 선택지 양쪽에 맞게 됐다. 고정 줄은 그 고유에 늘 붙는
+ * 속성이라 전용 조건이 맞다(선택지는 무작위 자리용). 무작위 풀(`poolRows`)에는 쓰지 않는다 — 거기서는 선택지가 맞는 조건이다.
+ * ⚠ 고정 줄의 정답이 선택지인 고유도 있다(영웅적인 비극 `stat_3418580811|21` 등 3개). 지금은 같은 문구의 보통 조건이 없어
+ * 이 규칙이 손대지 않지만, 거래소에 생기면 보통 조건이 뽑힌다 — 빌드 보고의 「후보 여럿」 수가 갑자기 줄면 의심할 것.
+ * @param {string[]} ids @returns {string[]}
+ */
+export function preferPlainIds(ids) {
+  const plain = ids.filter((id) => !id.includes('|'))
+  return plain.length === 1 && plain.length < ids.length ? plain : ids
+}
+
 /** 줄 → 산출물 줄. */
 function lineOut(text, index, pool) {
   if (RANDOM_SLOT.test(text)) return randomLine(text, { payload: STATS?.payload, page: PAGE, indexes: STATS?.indexes, explicitIndex: index, pool, used: PAGE_USED, affixD: DESECRATED_D })
-  const { ids, v } = lineCondition(text, index, pool)
+  const found = lineCondition(text, index, pool)
+  const ids = preferPlainIds(found.ids)
+  const { v } = found
   const out = { t: text }
   if (ids.length === 1) out.id = ids[0]
   else if (ids.length > 1) out.alt = ids
@@ -436,13 +446,25 @@ function familyOf(id, entries, regular) {
   return [me, ...pool.filter((e) => e.id !== id && templateSiblings(me.text, e.text))]
 }
 
-/** 매물 줄의 조건 id — 선택형 조건은 매물 hash 에 번호가 없다(`explicit.stat_3831171903` + 「Blood Magic」) → 문구로 번호를 찾는다 */
-function observedId(line, entries) {
+/**
+ * 매물 줄의 조건 id — 선택형 조건은 매물 hash 에 번호가 없다(`explicit.stat_3831171903` + 「Blood Magic」) → 문구로 번호를 찾는다.
+ * 관찰(2026-09-25)은 거래소가 영문으로 적던 때라 이름이 영문이다. 거래소가 한글로 옮긴 뒤(2026-11-15 실측)에도 찾도록
+ * 패시브 이름(lock 판 `poe2/passives.json`, 영문 → 한국어)으로 바꾼 문구로도 본다. 돌려주는 `t` 는 맞은 쪽 문구다.
+ * @returns {{id: string, t: string} | null}
+ */
+function observedId(line, entries, names) {
   const id = String(line.h ?? '').replace(/^stat\./, '')
   if (!id) return null
-  if (entries.some((e) => e.id === id)) return id
-  const hit = entries.find((e) => e.id.startsWith(`${id}|`) && normalizeTradeText(e.text) === normalizeTradeText(line.t))
-  return hit?.id ?? null
+  const ko = names?.get(String(line.t).trim().toLowerCase())
+  const exact = entries.find((e) => e.id === id)
+  // 번호까지 적힌 hash(`…|19` + 「Oasis」)도 있다 — 아래 `agrees` 가 문구를 대조하므로 번역 이름이 거래소 문구와 같을 때만 그 이름으로
+  if (exact) return { id, t: ko && normalizeTradeText(exact.text) === normalizeTradeText(ko) ? ko : line.t }
+  for (const t of [line.t, ko]) {
+    if (!t) continue
+    const hit = entries.find((e) => e.id.startsWith(`${id}|`) && normalizeTradeText(e.text) === normalizeTradeText(t))
+    if (hit) return { id: hit.id, t }
+  }
+  return null
 }
 
 /**
@@ -452,7 +474,7 @@ function observedId(line, entries) {
  * ③ 풀이 없는 훼손 자리 + 매물의 훼손 줄 → 매물에서 본 훼손 조건을 풀로(표본이라 제목에 밝힌다)
  * ④ 그 밖에 표에 없는 조건(함양·훼손 제외) → 「매물에서 본 속성」 한 줄(`o:1`, 값 범위는 매물의 굴림 범위)
  */
-export function applyObserved(entry, obs, { entries, regular }) {
+export function applyObserved(entry, obs, { entries, regular, names }) {
   if (!obs?.l?.length) return null
   const known = new Set()
   for (const k of ['i', 'f', 'm', 'mf']) for (const l of entry[k] ?? []) {
@@ -471,7 +493,8 @@ export function applyObserved(entry, obs, { entries, regular }) {
     .replace(/#\s*%의? 확률로 |항상 /g, '')
     .replace(/행운|불운/g, '운').replace(/상실|회복|획득/g, '得').replace(/감소|증가/g, '增')
   const agrees = (l) => { const t = textOf.get(l.id); return !!t && canon(t) === canon(l.t) }
-  const seen = obs.l.map((l) => ({ ...l, id: observedId(l, entries) })).filter((l) => l.id && !known.has(l.id) && agrees(l))
+  const seen = obs.l.map((l) => { const o = observedId(l, entries, names); return o ? { ...l, ...o } : { ...l, id: null } })
+    .filter((l) => l.id && !known.has(l.id) && agrees(l))
   const used = new Set()
   const out = { sibling: [], slot: [], extra: 0, filled: 0 }
   // ⓪ 목록 문구로는 조건을 못 찾은 줄 — 매물의 같은 문구(수 자리만 다름)가 조건 id 를 알려 준다(로라타의 파편 「항상 중독 유발」).
@@ -637,6 +660,7 @@ async function main() {
   const mfDiffers = []
   const pagePools = [] // 개별 페이지에 「속성 부여」 표가 있던 고유
   const pageExtra = [] // 자리에도 변형에도 안 쓴 표 — 사람이 볼 목록
+  const names = passiveNames() // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
   for (const card of cards) {
     const c = classOfBase(card.base, baseMap, affixes)
     if (!c) noClass.add(card.base)
@@ -668,11 +692,11 @@ async function main() {
       if (how === 'skip') pageExtra.push(`== ${card.name} (${card.base})\n${PAGE.map((r) => `   ${r.t.replace(/\n/g, ' / ')}`).join('\n')}`)
     }
     const obs = observed?.uniques?.[`${card.name}\u0000${card.base}`]
-    const got = obs ? applyObserved(entry, obs, { entries: allEntries, regular }) : null
+    const got = obs ? applyObserved(entry, obs, { entries: allEntries, regular, names }) : null
     if (got && (got.sibling.length || got.slot.length || got.extra || got.filled)) observedReport.push(`${card.name}: 형제 ${got.sibling.join(' · ') || 0} / 자리 ${got.slot.join(',') || 0} / 채움 ${got.filled} / 매물 속성 ${got.extra}`)
     u.push(entry)
   }
-  const koNames = koreanizePoolNames(u, passiveNames())
+  const koNames = koreanizePoolNames(u, names)
   console.log(`풀 이름 한국어로: ${koNames}줄`)
   const orphanMutated = [...mutated.keys()].filter((n) => !cards.some((c) => c.name === n))
 
