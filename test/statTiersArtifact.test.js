@@ -13,10 +13,10 @@ import { dirname, join } from 'node:path'
 import { describe, it, expect } from 'vitest'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
-const table = JSON.parse(readFileSync(join(root, 'src/lib/statTiers.poe2.json'), 'utf8'))
+const loadTable = (game) => JSON.parse(readFileSync(join(root, `src/lib/statTiers.${game}.json`), 'utf8'))
 
 /** 표의 모든 (부위, 능력치, 티어) 를 훑는다. */
-function* everyTier() {
+function* everyTier(table) {
   for (const [cls, byStat] of Object.entries(table)) {
     for (const [statId, rows] of Object.entries(byStat)) {
       for (const row of rows) yield { cls, statId, rows, row }
@@ -24,7 +24,9 @@ function* everyTier() {
   }
 }
 
-describe('statTiers.poe2.json — 산출물 계약', () => {
+// PoE1 표(속성 목록 PoE1, 2026-11-16)도 같은 계약을 지킨다 — tiersFor 가 두 게임에 같은 가정을 쓴다
+describe.each(['poe2', 'poe1'])('statTiers.%s.json — 산출물 계약', (game) => {
+  const table = loadTable(game)
   it('비어 있지 않다', () => {
     expect(Object.keys(table).length).toBeGreaterThan(20)
   })
@@ -33,7 +35,7 @@ describe('statTiers.poe2.json — 산출물 계약', () => {
     for (const cls of Object.keys(table)) expect(cls).toMatch(/^[A-Za-z_]+$/)
   })
 
-  it('능력치 키는 거래소 stat id 다 — 유물만 성역 그룹, 나머지는 비고정', () => {
+  it('능력치 키는 거래소 stat id 다 — 유물만 성역 그룹, 나머지는 비고정(PoE1 은 모두 비고정)', () => {
     for (const [cls, byStat] of Object.entries(table)) {
       const pattern = cls === 'Relic' ? /^sanctum\./ : /^explicit\./
       for (const statId of Object.keys(byStat)) expect(statId, `${cls} ${statId}`).toMatch(pattern)
@@ -65,7 +67,7 @@ describe('statTiers.poe2.json — 산출물 계약', () => {
 
   it('요구 아이템 레벨이 1~100 사이 정수다', () => {
     const bad = []
-    for (const { cls, statId, row } of everyTier()) {
+    for (const { cls, statId, row } of everyTier(table)) {
       if (!Number.isInteger(row.l) || row.l < 1 || row.l > 100) bad.push(`${cls}/${statId} T${row.t}: l=${row.l}`)
     }
     expect(bad).toEqual([])
@@ -73,7 +75,7 @@ describe('statTiers.poe2.json — 산출물 계약', () => {
 
   it('값 범위가 [min, max] 이고 min <= max 다', () => {
     const bad = []
-    for (const { cls, statId, row } of everyTier()) {
+    for (const { cls, statId, row } of everyTier(table)) {
       if (!Array.isArray(row.v) || !row.v.length) { bad.push(`${cls}/${statId} T${row.t}: 값 슬롯 없음`); continue }
       for (const range of row.v) {
         if (!Array.isArray(range) || range.length !== 2) bad.push(`${cls}/${statId} T${row.t}: ${JSON.stringify(range)}`)
@@ -85,7 +87,7 @@ describe('statTiers.poe2.json — 산출물 계약', () => {
 
   it('예상 밖의 키가 붙지 않았다', () => {
     const bad = []
-    for (const { cls, statId, row } of everyTier()) {
+    for (const { cls, statId, row } of everyTier(table)) {
       const extra = Object.keys(row).filter((k) => !['t', 'l', 'v'].includes(k))
       if (extra.length) bad.push(`${cls}/${statId} T${row.t}: ${extra.join(',')}`)
     }

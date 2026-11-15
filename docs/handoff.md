@@ -1,11 +1,34 @@
 ---
-timestamp: 2026-11-15 (Asia/Seoul)
+timestamp: 2026-11-16 (Asia/Seoul)
 project: poe-bookmark-atlas
 ---
 
 # poe-bookmark-atlas 핸드오프
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
+
+## 속성 목록 PoE1 · 단축키 점검 (2026-11-16, 미릴리즈)
+
+- **속성 목록을 PoE1 거래소에도 켰다.** 표는 같은 빌드로 만든다:
+  `POE_GAME_DATA_ROOT=<잠금 커밋의 poe-game-data> node scripts/build-tier-table.mjs --game poe1` → `statTiers.poe1.json`·`statAffixes.poe1.json`
+  (29부위 · 858능력치 · 매칭 97.0%). ⚠ 메인 체크아웃의 `D:/github/poe-game-data` 가 옛 판이면 스크립트가 스냅샷 불일치로 멈춘다 — 잠금 태그의 워크트리를 `POE_GAME_DATA_ROOT` 로 준다.
+  - 부위 대응: `itemClass.js` 의 `classTables(game)`(PoE1 표 따로). PoE1 거래소는 단검·한손 검·한손 철퇴·지팡이·주얼이 「모든 …」 묶음 + 「기본 …」 구체 유형이라 구체 유형만 잇는다. 플라스크는 거래소 유형이 `flask` 하나라 표에 게임 표기 이름(`n`)을 실어 유형 칩에 쓴다(`n` 은 거래소 유형이 없는 부위에만 — PoE2 산출물 바이트 동일 확인).
+  - 타락 = 거래소 「고정」(implicit) 그룹(PoE1 인챈트는 연구소 인챈트). 에센스 버킷은 PoE1 모드에 한국어 문장이 없어 0건.
+  - **PoE1 주얼(Jewel·AbyssJewel)은 뺐다** — poe-game-data v2026.11.15 의 그 두 파일이 주얼 속성이 아니라 아틀라스(`MapAtlas…`) 모드 143개를 담고 있다. 추출기(poe-ggpk-extractor) 쪽 결함으로 보이며 고쳐지면 `SKIP_FILES_BY_GAME` 에서 지운다(미보고).
+  - 문구가 같은 id 쌍: `trade-twins.poe1.json`(2026-11-16 Covens 실측 13쌍, 모두 한쪽 0건). 쌍 묶기를 **정규화 문구**로 바꿨다 — PoE1 「냉기 저항 +#%」(4220027924)와 「냉기 저항 #%」(496075050)가 원문이 달라 보고에서 빠지고 목록에 두 줄로 남았었다. scope `*` = 모든 부위(유형이 없는 플라스크용).
+  - 티어 칩(T1/T2/T3)은 여전히 PoE2 전용. 고유 모드도 PoE2 전용(PoE1 고유 표 없음).
+  - 장비창: 룬 단검(마법 무기)·레이피어(한손 줄)·하이브리드 플라스크·낚싯대(기타) 칸과 PoE1 무기 선 그림을 더했다. PoE1 묶음 이름은 「생명력·마나」·「플라스크」(정신력·호신부가 없다).
+  - 독립 검토(blind-reviewer)로 잡아 고친 것: PoE1 아이템 레벨은 검색 조건의 `misc_filters` 에 있다(PoE2 는 `type_filters`) ·
+    PoE1 은 티어 칩 감시가 없어 베이스 이름표를 속성 목록 창에서 처음 받는다 — 받을 때까지 기다린다 · PoE1 플라스크 칩을 고르면
+    거래소 유형을 묶음 「플라스크」(`flask`)로 맞춘다(`classTables().groupCategory`, 라이브 확인) · 목록 없는 부위(PoE1 주얼)는 미상으로 열어
+    장비창을 펼친다 · 플라스크 영역 이름은 라벨이 아니라 게임으로 가른다(영문 거래소 라벨은 Charms) · 핸들 툴팁도 실제 배정을 따른다.
+    남은 것: 저항 부호 쌍(763311546 등)은 부위 하나씩만 쟀다(`*` 로 전 부위에 적용).
+  - 투어: PoE1 판 속성 목록 스텝(`since: '0.16.0'` — 릴리즈 때 `WHATS_NEW_VERSION` 을 그 값으로 올리면 새 기능 투어로 뜬다).
+  - 라이브(로그인된 카카오 PoE1, Covens): **넣기 경로**를 MAIN world 에 요청을 직접 보내 확인 — 필수 → 기존 그룹, 후보 접두·접미 개수 그룹 2개 생성, 값 70·36, 유형 장갑·비고유, 고정 id(`implicit.*`) 행, 검색 요청 0. ⚠ **이 빌드를 로그인 프로필에 올려 패널에서 끝까지 눌러 보지는 못했다**(로드된 개발 빌드는 다른 워크트리 것) — 창 화면은 하네스 `affix.html?game=poe1&class=Gloves` 로 확인.
+- **「북마크 저장 단축키(Alt+S)가 안 된다」 원인**: 로그인 프로필(Profile 3)에 **스토어판 0.15.3(꺼 둠)과 개발 빌드(`worktrees/league-migrate-gzip-id/dist`, 켬)가 함께** 있었고, Alt+B·Alt+S 는 꺼진 스토어판이 쥐고 있어 개발 빌드에는 배정이 없었다(`Secure Preferences` 의 commands 에 `was_assigned` 없음). 키를 누르면 꺼진 쪽으로 가서 아무 일도 없다. 임시 프로필에 같은 dist 두 벌을 올려 재현(둘째는 `shortcut: ""`).
+  - 코드 쪽 대응: 단축키 팝오버가 **실제 배정**을 보인다 — 서비스 워커 `ba-shortcuts`(chrome.commands.getAll) → `panel.setCommandKeys`. 비었으면 「지정 안 됨」 + 팝업의 「패널 단축키 변경하기」 안내. 창 포커스마다 다시 묻는다.
+  - 페이지에서 키를 직접 듣는 대비책은 넣었다가 뺐다 — 원인이 배정 없음이라 고치지 못하고, 크롬 명령과 겹치면 두 번 도는 위험만 남는다.
+  - 다른 단축키 라이브(카카오 PoE1): Alt+A·Alt+G 드롭다운 열림, Alt+F 아이템 검색 포커스, Alt+K 패널 검색칸, Alt+O 설정 — 모두 정상.
 
 ## poe-game-data v2026.11.15 로 lock 갱신 · 표 재생성 (2026-11-15, 미릴리즈)
 

@@ -11,13 +11,17 @@ import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { resolveLockedGameDataRoot } from './poe-game-data-lock.mjs'
 import { normalizeTradeText, modTextKeys, polarityFlipped } from '../src/lib/statTextNorm.js'
-import { MOD_FILE_BY_POB_CLASS, CLASS_BY_CATEGORY } from '../src/lib/itemClass.js'
+import { classTables } from '../src/lib/itemClass.js'
 import { affixCategoryOf } from '../src/lib/affixCategory.js'
 import { LOCAL_MARK } from '../src/lib/modLineMatch.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const EXPLICIT_GROUP = '비고정' // 거래소 능력치 목록에서 일반 옵션 그룹
 const ENCHANT_GROUP = '인챈트' // 타락 속성이 거래소에서 걸리는 그룹 — 실측 380개 중 356개가 이 그룹 문구와 이어진다(2026-09-15)
+// PoE1 은 타락 속성이 고정(implicit) 자리에 붙는다 — 거래소에서도 「고정」 그룹으로 거른다(PoE1 인챈트는 연구소 인챈트다)
+const CORRUPTED_GROUP_BY_GAME = { poe1: '고정', poe2: ENCHANT_GROUP }
+// 게임별 베이스 이름표(부위 대응표 검증용)
+const BASE_MAP_BY_GAME = { poe1: 'pobBaseMap.poe1.json', poe2: 'pobBaseMap.json' }
 const DESECRATED_GROUP = '훼손된' // 훼손된 속성이 거래소에서 걸리는 그룹 — 같은 문구가 비고정에도 있지만, 훼손된 속성만 고르려면 이쪽이다
 const SKILL_GROUP = '스킬' // 「스킬 부여: #레벨 X」 — 부재 목걸이처럼 스킬을 주는 아이템의 조건. 게임 모드 데이터에는 없고 거래소 목록에만 있다
 const SANCTUM_GROUP = '성역' // 유물 속성이 거래소에서 걸리는 그룹 — 비고정에도 같은 문구가 있어 부위로 갈라 이 그룹만 본다
@@ -25,6 +29,9 @@ const SANCTUM_GROUP = '성역' // 유물 속성이 거래소에서 걸리는 그
 // Relic 은 v2026.09.16.7 부터 성역 설명 파일로 문장이 채워졌다(그 전에는 137개 중 9줄뿐이라 뺐었다).
 const GROUP_BY_CLASS = { Relic: SANCTUM_GROUP }
 const SKIP_FILES = new Set(['Map.json'])
+// 게임별로 더 뺄 파일 — PoE1 주얼 두 파일은 주얼 속성이 아니라 아틀라스(지도) 속성을 담고 있다(poe-game-data v2026.11.15,
+// `MapAtlas…` 모드 143개 · 접미어 0). 그대로 실으면 주얼 목록에 「에센스에 갇힌 몬스터가 …」 한 줄만 뜬다. 데이터가 고쳐지면 지운다.
+const SKIP_FILES_BY_GAME = { poe1: new Set(['Jewel.json', 'AbyssJewel.json']) }
 // 거래소 한국어 목록이 로컬 능력치에 붙이는 표시(영문 「(Local)」)
 export { LOCAL_MARK } // 정본은 src/lib/modLineMatch.js
 
@@ -249,12 +256,15 @@ async function main() {
 
   const dataRoot = resolveLockedGameDataRoot({ startDir: join(here, '..') })
   const modDir = join(dataRoot, game, 'modifiers', 'json')
-  const files = readdirSync(modDir).filter((f) => f.endsWith('.json') && !SKIP_FILES.has(f))
+  const allFiles = readdirSync(modDir).filter((f) => f.endsWith('.json') && !SKIP_FILES.has(f))
+  const files = allFiles.filter((f) => !SKIP_FILES_BY_GAME[game]?.has(f))
 
-  const baseMap = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', 'pobBaseMap.json'), 'utf8'))
+  if (!BASE_MAP_BY_GAME[game]) { console.error(`모르는 게임: ${game}`); process.exit(1) }
+  const tables = classTables(game)
+  const baseMap = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', BASE_MAP_BY_GAME[game]), 'utf8'))
   const problems = verifyClassBridge(
-    MOD_FILE_BY_POB_CLASS,
-    new Set(files.map((f) => f.replace('.json', ''))),
+    tables.byPobClass,
+    new Set(allFiles.map((f) => f.replace('.json', ''))),
     new Set(Object.values(baseMap).map((v) => v[1]).filter(Boolean))
   )
   if (problems.length) {
@@ -265,7 +275,7 @@ async function main() {
   const statsPayload = await loadStats(game, arg('--stats', null))
   const { index: tradeIndex, valueless } = buildTradeIndex(statsPayload)
   // 타락으로 붙는 속성은 거래소에서 「인챈트」 로 거른다(PoE2). 문구 매칭 규칙은 일반 모드와 같다.
-  const { index: enchantIndex, valueless: enchantValueless } = buildTradeIndex(statsPayload, ENCHANT_GROUP)
+  const { index: enchantIndex, valueless: enchantValueless } = buildTradeIndex(statsPayload, CORRUPTED_GROUP_BY_GAME[game])
   const { index: desecratedIndex, valueless: desecratedValueless } = buildTradeIndex(statsPayload, DESECRATED_GROUP)
   const { index: sanctumIndex, valueless: sanctumValueless } = buildTradeIndex(statsPayload, SANCTUM_GROUP)
   const table = {}
@@ -279,7 +289,7 @@ async function main() {
   const textOf = new Map()
   for (const group of statsPayload.result ?? []) for (const e of group.entries ?? []) textOf.set(e.id, e.text)
   const categoryOfClass = {}
-  for (const [category, c] of Object.entries(CLASS_BY_CATEGORY)) categoryOfClass[c] ??= category
+  for (const [category, c] of Object.entries(tables.classByCategory)) categoryOfClass[c] ??= category
   const twinDropped = []
   const twinUnresolved = []
 
@@ -394,6 +404,8 @@ async function main() {
         ...(hybrids.length ? { h: hybrids } : {}),
         ...(mechanics.length ? { m: mechanics } : {}),
         ...(bases.length ? { b: bases } : {}),
+        // 거래소 유형 드롭다운에 이 부위 하나만 고르는 항목이 없으면(PoE1 플라스크) 칩 이름을 게임 표기로 싣는다(§30)
+        ...(!categoryOfClass[cls] && data.className?.kr ? { n: data.className.kr } : {}),
       }
       // 문구가 같은 거래소 id 쌍 — 실측으로 매물이 없는 쪽을 목록에서 뺀다(scripts/trade-twins.<game>.json)
       const twins = pruneTradeTwins(entry, { category: categoryOfClass[cls] ?? null, rules: twinRules, textOf })
@@ -534,6 +546,8 @@ export function basesOf(data, poolMods) {
  * 사다리를 단다 — 그래서 속성 목록에 같은 줄이 두 번 보였다(2026-09-16 제보: 갑옷 「정신력 #」).
  * **어느 쪽이 맞는지는 부위마다 다르다**(모든 능력치 #: 장신구는 1379411836, 무기는 2897413282). 그래서 규칙이 아니라
  * 실측표를 받는다. scope 는 거래소 아이템 유형 id 의 앞부분이고, 가장 긴 것이 이긴다.
+ * scope `*` 는 모든 부위다 — 부위마다 재 봐도 같은 쪽이 이기는 쌍, 그리고 거래소 유형이 하나로 정해지지 않는 부위
+ * (PoE1 플라스크 넷은 유형이 `flask` 하나라 category 가 없다)에 쓴다. 더 긴 scope 가 있으면 그쪽이 이긴다.
  *
  * @param {object} entry statAffixes 의 한 부위 {p,s,c,x,e,d,a,m,b}
  * @param {{category:string|null, rules:Array<{scope:string,keep:string,drop:string}>, textOf:Map<string,string>}} ctx
@@ -543,14 +557,17 @@ export function pruneTradeTwins(entry, { category, rules, textOf }) {
   const pools = [[...(entry.p ?? []), ...(entry.s ?? [])]]
   for (const key of ['x', 'e', 'd', 'a']) if (entry[key]) pools.push(Object.keys(entry[key]))
   for (const m of entry.m ?? []) pools.push(Object.keys(m.x ?? {}))
-  const applies = (rule) => category != null && (category === rule.scope || category.startsWith(rule.scope + '.'))
+  const applies = (rule) => rule.scope === '*' || (category != null && (category === rule.scope || category.startsWith(rule.scope + '.')))
   const drop = new Set()
   const unresolved = new Set()
   for (const ids of pools) {
+    // 정규화 문구로 묶는다 — 빌드가 문구를 정규화해서 잇기 때문에, 부호만 다른 두 조건(PoE1 「냉기 저항 +#%」 와
+    // 「냉기 저항 #%」)도 한 사다리를 함께 받는다. 원문으로 묶으면 그런 쌍이 보고에서 빠지고 목록에 두 줄로 남는다(2026-11-16).
     const byText = new Map()
     for (const id of new Set(ids)) {
-      const text = textOf.get(id)
-      if (text == null) continue
+      const raw = textOf.get(id)
+      if (raw == null) continue
+      const text = normalizeTradeText(raw)
       byText.set(text, [...(byText.get(text) ?? []), id])
     }
     for (const [text, group] of byText) {

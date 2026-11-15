@@ -24,11 +24,12 @@ import { attachTierChips, rowStatText } from './tier-chip.js'
 import { bindPageTip } from './page-tip.js'
 import { readLiveTypeFilters } from './typeFilterDom.js'
 import { applyLiveTypeFilters, holdWhileAmbiguous } from '../lib/liveTypeFilters.js'
-import { classFromQuery, CLASS_BY_CATEGORY, UNRELEASED_CLASSES } from '../lib/itemClass.js'
+import { classFromQuery, classTables } from '../lib/itemClass.js'
 import { normalizeTradeText } from '../lib/statTextNorm.js'
 import { attachAffixButtons, openAffixPopover, groupToken, groupLabel, groupRowTitles, AFFIX_CHIP_ICON } from './affix-picker.js'
 import { affixListFor, basesFor } from '../lib/affixList.js'
 import { rarityOfItem, rarityOfQuery } from '../lib/searchRarity.js'
+import { shortcutKeys } from '../lib/commandKeys.js'
 
 const LOG = (...a) => console.log('[BA]', ...a)
 const game = location.pathname.startsWith('/trade2') ? 'poe2' : 'poe1'
@@ -1256,27 +1257,28 @@ function ensureStatIdIndex() {
 let tierBaseMap = null
 let tierBaseMapLoading = null
 function tierItemClass(query) {
-  const cls = classFromQuery(query, tierBaseMap)
+  const cls = classFromQuery(query, tierBaseMap, game)
   if (cls) return cls
   // 이름은 있는데 이름표가 아직 없다 → 그때 한 번 불러온다. 이번 회차는 부위 미상으로 두고
   // 다음 화면 감시에서 판정한다(statMap 을 기다리는 방식과 같다).
   // 실패하면 재시도하지 않는다 — 페이지를 새로 열면 복구된다. 매 회차 재시도는 낭비다.
   if (!tierBaseMap && !tierBaseMapLoading && query?.type) {
-    tierBaseMapLoading = import('../lib/pobBaseMap.json')
+    tierBaseMapLoading = (game === 'poe1' ? import('../lib/pobBaseMap.poe1.json') : import('../lib/pobBaseMap.json'))
       .then((m) => { tierBaseMap = m.default })
       .catch((err) => { LOG('베이스 이름표 로드 실패', String(err)) })
   }
   return null
 }
 
-// 티어 표(155KB)도 같은 이유로 지연 로딩한다 — PoE1 페이지에서는 한 번도 쓰지 않는다.
+// 티어 표(155KB)도 같은 이유로 지연 로딩한다 — 게임마다 따로 만든 표라 지금 게임 것만 받는다.
+// PoE1 은 속성 목록(값 넣기)만 이 표를 쓴다 — 티어 칩은 아직 PoE2 전용이다(renderTierChips).
 // 여기도 실패 시 재시도하지 않는다 — 페이지를 새로 열면 복구된다.
 let tierTable = null
 let tierTableLoading = null
 function ensureTierTable() {
   if (tierTable) return tierTable
   if (!tierTableLoading) {
-    tierTableLoading = import('../lib/statTiers.poe2.json')
+    tierTableLoading = (game === 'poe1' ? import('../lib/statTiers.poe1.json') : import('../lib/statTiers.poe2.json'))
       .then((m) => { tierTable = m.default })
       .catch((err) => { LOG('티어 표 로드 실패', String(err)) })
   }
@@ -1309,7 +1311,10 @@ function tierContext() {
   const live = { ...read, category: holdWhileAmbiguous(read.category, lastLiveCategory) }
   if (read.category.status === 'ok') lastLiveCategory = read.category
   const query = applyLiveTypeFilters(currentQuery(), live)
-  const ilvl = query?.filters?.type_filters?.filters?.ilvl
+  // 화면에서 읽은 레벨이 먼저다. 검색 조건에서는 PoE2 가 type_filters, PoE1 이 misc_filters(「기타」)에 아이템 레벨을 둔다
+  // (2026-11-16 거래소 data/filters 실측 — 독립 검토가 PoE1 상한이 늘 비는 것을 찾았다)
+  const filters = query?.filters
+  const ilvl = live.ilvlMax?.status === 'ok' ? { max: live.ilvlMax.value } : (filters?.type_filters?.filters?.ilvl ?? filters?.misc_filters?.filters?.ilvl)
   return { read, live, query, itemClass: tierItemClass(query), ilvlMax: ilvl?.max ?? null }
 }
 
@@ -1355,7 +1360,7 @@ let affixTableLoading = null
 function ensureAffixTable() {
   if (affixTable) return affixTable
   if (!affixTableLoading) {
-    affixTableLoading = import('../lib/statAffixes.poe2.json')
+    affixTableLoading = (game === 'poe1' ? import('../lib/statAffixes.poe1.json') : import('../lib/statAffixes.poe2.json'))
       .then((m) => { affixTable = m.default })
       .catch((err) => { LOG('속성 목록 로드 실패', String(err)) })
   }
@@ -1367,6 +1372,7 @@ let uniqueTable = null
 let uniqueTableLoading = null
 function ensureUniqueTable() {
   if (uniqueTable) return uniqueTable
+  if (game !== 'poe2') return null // 고유 속성 표는 PoE2 만 있다 — PoE1 창에는 「비고유 | 고유」 전환이 없다
   if (!uniqueTableLoading) {
     uniqueTableLoading = import('../lib/uniqueMods.poe2.json')
       .then((m) => { uniqueTable = m.default })
@@ -1443,7 +1449,6 @@ async function observeFromTrade(entry, league, key, store, firstWait) {
 }
 
 function renderAffixButtons() {
-  if (game !== 'poe2') return
   pobEnsureStyle()
   try { attachAffixButtons(document, { onOpen: (group, btn) => guard(openAffixesFor(group, btn)) }) } catch (err) { LOG('속성 목록 버튼 실패', String(err)) }
 }
@@ -1456,7 +1461,14 @@ async function openAffixesFor(group, btn) {
     return
   }
   const index = ensureStatIdIndex()
-  const { itemClass, ilvlMax } = tierContext()
+  // 베이스 이름으로만 부위가 정해지는 검색(PoE1 플라스크·「임의의 단검」 + 베이스)은 이름표가 있어야 한다.
+  // PoE2 는 티어 칩 감시가 미리 데워 두지만 PoE1 에는 칩이 없어 여기서 처음 부른다 — 받을 때까지 기다린다.
+  tierItemClass(currentQuery())
+  if (tierBaseMapLoading) await tierBaseMapLoading
+  const ctx = tierContext()
+  // 표에 목록이 없는 부위(PoE1 주얼 — 게임 데이터 결함으로 뺐다)는 「고르세요」 안내 대신 장비창을 펼친 채 연다
+  const itemClass = ctx.itemClass && affixTable[ctx.itemClass] ? ctx.itemClass : null
+  const { ilvlMax } = ctx
   const existingIds = groupRowTitles(group)
     .map((title) => index.get(normalizeTradeText(rowStatText(title))))
     .filter(Boolean)
@@ -1465,6 +1477,7 @@ async function openAffixesFor(group, btn) {
   const prefs = { ...(await loadAffixPrefs()), emphasis: await loadAffixEmphasis() }
   openAffixPopover({
     anchor: btn,
+    game,
     title: label,
     subtitle: ilvlMax != null ? `아이템 레벨 ${ilvlMax} 이하 기준` : '아이템 레벨 상한 없음',
     list: listForClass(itemClass),
@@ -1505,11 +1518,20 @@ async function openAffixesFor(group, btn) {
 function affixClassChoices() {
   const out = []
   const seen = new Set()
+  const { classByCategory, unreleased } = classTables(game)
   for (const [categoryId, text] of Object.entries(filterMap.options?.category ?? {})) {
-    const cls = CLASS_BY_CATEGORY[categoryId]
-    if (!cls || seen.has(cls) || !affixTable?.[cls] || UNRELEASED_CLASSES.has(cls)) continue
+    const cls = classByCategory[categoryId]
+    if (!cls || seen.has(cls) || !affixTable?.[cls] || unreleased.has(cls)) continue
     seen.add(cls)
     out.push({ cls, label: text })
+  }
+  // 거래소 유형 드롭다운에 하나만 고르는 항목이 없는 부위(PoE1 플라스크 넷) — 이름은 빌드가 실은 게임 표기(n)다(§30)
+  if (Object.keys(filterMap.options?.category ?? {}).length) {
+    for (const [cls, entry] of Object.entries(affixTable ?? {})) {
+      if (seen.has(cls) || unreleased.has(cls) || typeof entry?.n !== 'string') continue
+      seen.add(cls)
+      out.push({ cls, label: entry.n })
+    }
   }
   return out
 }
@@ -1525,7 +1547,9 @@ function typeFiltersFor(classes, pageClass) {
   const list = Array.isArray(classes) ? classes : []
   const only = list.length === 1 ? list[0] : null
   if (only && only !== pageClass) {
-    const category = Object.keys(filterMap.options?.category ?? {}).find((id) => CLASS_BY_CATEGORY[id] === only)
+    const { classByCategory, groupCategory } = classTables(game)
+    const category = Object.keys(filterMap.options?.category ?? {}).find((id) => classByCategory[id] === only) ??
+      (groupCategory[only] && Object.hasOwn(filterMap.options?.category ?? {}, groupCategory[only]) ? groupCategory[only] : undefined)
     if (category) out.category = category
   }
   return out
@@ -1837,7 +1861,7 @@ function showTourDemo(side) {
   // 문구는 정적 한국어 리터럴. 화폐 칩만 실제 칩과 같은 자산(GGG CDN 이미지)을 쓴다 — demoChipHtml 참조.
   el.innerHTML = `
     <div class="ba-demo-badge">예시 · 실제 화면에서는 이렇게 보여요</div>
-    ${game === 'poe2' ? demoTierHtml() : ''}
+    ${game === 'poe2' ? demoTierHtml() : demoAffixHtml()}
     <div class="ba-demo-where">검색 결과</div>
     <div class="ba-demo-name">형상 없는 반지</div>
     <div class="ba-demo-price">제시 가격 12 <span class="ba-exr-chip">${demoChipHtml()}</span></div>
@@ -1861,6 +1885,14 @@ function showTourDemo(side) {
  *    `attachTierChips` 는 문서의 **모든 input** 에서 최소 칸을 찾으므로, 예시에 진짜 입력칸을 두면
  *    거기에 실제 칩을 붙이려 들고 dataset 표식까지 남긴다. 보이기만 하면 되니 span 으로 둔다.
  */
+// PoE1 — 티어 칩은 아직 없고 속성 목록 칩만 있다(renderTierChips 는 PoE2 전용)
+function demoAffixHtml() {
+  return `
+    <div class="ba-demo-where">검색 조건 — 능력치 필터</div>
+    <div class="ba-demo-filter ba-demo-addrow"><span class="ba-demo-stat">+ 능력치 필터 추가</span></div>
+    <div class="ba-affix-chiprow"><button type="button" class="ba-affix-btn" tabindex="-1">${AFFIX_CHIP_ICON}<span>속성 목록</span></button></div>`
+}
+
 function demoTierHtml() {
   const chips = ['T1', 'T2', 'T3']
     .map((t) => `<button type="button" class="ba-tier-chip" tabindex="-1">${t}</button>`)
@@ -1963,6 +1995,17 @@ chrome.runtime.onMessage.addListener((msg) => {
   else if (msg.cmd === 'save') { panel.show(); panel.save() }
   else if (msg.cmd === 'tour') { panel.show(); panel.startTour() }
 })
+
+// 단축키 팝오버에 크롬이 지금 배정한 패널 단축키를 보여 준다 — 비었으면 「지정 안 됨」(lib/commandKeys.js 주석).
+// 배정은 chrome://extensions/shortcuts 에서 언제든 바뀌므로 창에 포커스가 돌아올 때마다 다시 묻는다.
+async function refreshCommandKeys() {
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'ba-shortcuts' })
+    if (r?.ok) panel.setCommandKeys({ 'toggle-panel': shortcutKeys(r.keys['toggle-panel']), 'save-search': shortcutKeys(r.keys['save-search']) })
+  } catch (_) { /* 확장이 새로고침돼 연결이 끊겼다 — 지난 표시로 둔다 */ }
+}
+refreshCommandKeys()
+window.addEventListener('focus', () => { refreshCommandKeys() })
 
 // [테스트 시드] localStorage.__baSeedStale='1' 후 새로고침 → 히스토리 2개로 오래된(stale) 북마크 생성(1회).
 // 1개는 14일↑ 미사용(갱신 필요), 1개는 리그 불일치(이전 리그)까지. 검증용 — 필요 없으면 제거.

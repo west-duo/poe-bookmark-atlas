@@ -134,7 +134,7 @@ const DEFAULT_ROLE = 'or'
  */
 export function affixLimitOf(cls) {
   if (cls === 'Jewel') return 2
-  if (cls === 'LifeFlask' || cls === 'ManaFlask' || cls === 'UtilityFlask') return 1
+  if (cls === 'LifeFlask' || cls === 'ManaFlask' || cls === 'HybridFlask' || cls === 'UtilityFlask') return 1
   return 3
 }
 const SOURCE_LABEL = { prefix: '접두', suffix: '접미', corrupted: '타락' }
@@ -172,13 +172,14 @@ const TABS = [
  *   meta.orMin — OR 역할별 「최소 몇 개」(그룹을 만들 때 개수 칸에 넣는다)
  * @param {{baseByClass?:Record<string,string>, emphasis?:boolean}} [args.prefs]
  *   emphasis — 하단 안내·선택 요약을 강조하고 바뀔 때 짧게 움직인다(기본 켬, 패널 ⚙ 설정에서 끈다)
+ * @param {'poe1'|'poe2'} [args.game] 종류 묶음 이름의 게임 표기(PoE1 에는 정신력·호신부가 없다)
  * @param {{u:object[]}|null} [args.uniques] 고유 아이템 속성 표(uniqueMods) — 있으면 머리에 「비고유 | 고유」 전환이 생긴다
  * @param {'normal'|'unique'} [args.startMode] 처음 보일 모드 — 지금 검색이 고유 검색이면 부르는 쪽이 'unique' 로 연다
  * @param {(sel:{unique:object, items:Array<{id:string, value:{min?:number,max?:number}|null, role:'and'|'or', mutated:boolean}>})=>Promise<void>|void} [args.onAddUnique]
  * @param {(entry:object, opts?:{fresh?:boolean})=>Promise<{status:'ok'|'empty'|'rate'|'error', data?:object, at?:number, wait?:number}>} [args.observeUnique]
  *   「매물에서 속성 더 찾기」 — 없으면 단추를 그리지 않는다
  */
-export function openAffixPopover({ anchor, title, subtitle, list, classes = [], currentClass = null, listForClass, basesForClass, onAdd, prefs = {}, onPrefs, uniques = null, startMode = 'normal', onAddUnique, observeUnique = null }) {
+export function openAffixPopover({ anchor, title, subtitle, list, classes = [], currentClass = null, listForClass, basesForClass, onAdd, prefs = {}, onPrefs, uniques = null, startMode = 'normal', onAddUnique, observeUnique = null, game = 'poe2' }) {
   // 사용자 설정 — 창을 닫았다 열어도 남는다(부르는 쪽이 저장한다)
   //   baseByClass  유형마다 마지막에 고른 베이스(주얼 → 루비 …)
   const settings = { baseByClass: { ...(prefs.baseByClass ?? {}) }, emphasis: prefs.emphasis !== false }
@@ -259,7 +260,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     current = { cls, base, list: listForClass(cls, base) }
     render()
   }
-  const doll = buildTypeDoll(doc, classes, { onPick: pickClass })
+  const doll = buildTypeDoll(doc, classes, { onPick: pickClass, game })
   // 이미 유형이 정해진 채 열면 접어서 시작한다 — 먼저 보여야 할 것은 속성 목록이다
   doll.setOpen(!currentClass)
   if (classes.length) pop.appendChild(doll.el)
@@ -855,7 +856,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   const renderSections = (host, items, startOpen, showSource, { flat = false } = {}) => {
     host.style.setProperty('--ba-tier-w', `${tierWidthOf(items)}px`)
     host.classList.toggle('has-twins', items.some((it) => (twinPools.get(it.id) ?? []).length > 1))
-    for (const group of groupByCategory(items, (it) => it.category)) {
+    for (const group of groupByCategory(items, (it) => it.category, game)) {
       const sec = el(doc, 'section', 'ba-affix-sec')
       if (flat) sec.classList.add('is-flat')
       sec.dataset.category = group.key // 종류마다 다른 색을 입힌다(CSS)
