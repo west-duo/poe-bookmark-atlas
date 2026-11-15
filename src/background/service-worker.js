@@ -80,6 +80,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   ;(async () => {
     try {
       if (msg && msg.type === 'fetchRates') sendResponse({ ok: true, data: await fetchRates(msg.game, msg.league) })
+      else if (msg && msg.type === 'ba-shortcuts') sendResponse({ ok: true, keys: await commandShortcuts() })
       else if (msg && msg.type === 'ba-convert') sendResponse(await handleConvert(msg))
       else if (msg && msg.type === 'ba-open-tab') sendResponse(await handleOpenTab(msg))
       else if (msg && msg.type === 'ba-fetch-en') sendResponse(await handleFetchEn(msg))
@@ -94,6 +95,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // ── 키보드 단축키 (manifest commands) ──
 const isTrade = (url) => /(poe\.kakaogames\.com|www\.pathofexile\.com)\/trade2?\//i.test(url || '')
+
+// 지금 크롬에 배정된 패널 단축키 — 콘텐츠 스크립트가 단축키 팝오버에 보여 준다(lib/commandKeys.js).
+// 빈 문자열 = 배정 안 됨(다른 확장과 겹쳐 크롬이 비워 뒀거나 사용자가 지웠다). 콘텐츠 스크립트에는 chrome.commands 가 없다.
+async function commandShortcuts() {
+  const out = { 'toggle-panel': '', 'save-search': '' }
+  for (const c of await chrome.commands.getAll()) if (Object.hasOwn(out, c.name)) out[c.name] = c.shortcut || ''
+  return out
+}
 
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== 'toggle-panel' && command !== 'save-search') return

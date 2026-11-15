@@ -94,6 +94,95 @@ export const MOD_FILE_BY_POB_CLASS = {
   'Charms': 'UtilityFlask',
 }
 
+// ── PoE1 ─────────────────────────────────────────────────────────────────
+// 거래소 유형(카카오 /api/trade/data/filters, 2026-11-16 실측)과 pobBaseMap.poe1.json 의 클래스명을 잇는다.
+// PoE1 거래소는 단검·한손 검·한손 철퇴·지팡이·주얼을 「모든 …」 묶음과 「기본 …」 구체 유형으로 나눈다 —
+// 묶음(weapon.dagger·weapon.onesword·weapon.onemace·weapon.staff·jewel)은 부위가 둘이라 담지 않는다(베이스 이름으로 내려간다).
+// 플라스크는 거래소 유형이 `flask` 하나뿐이라(생명력·마나·하이브리드·특수 넷) 유형 표에 없고 베이스 이름으로만 정한다.
+
+/** PoE1 거래소 구체 category → modifiers 파일명. */
+export const POE1_MOD_FILE_BY_CATEGORY = {
+  'weapon.bow': 'Bow',
+  'weapon.claw': 'Claw',
+  'weapon.basedagger': 'Dagger',
+  'weapon.runedagger': 'Rune_Dagger',
+  'weapon.oneaxe': 'One_Hand_Axe',
+  'weapon.basesword': 'One_Hand_Sword',
+  'weapon.rapier': 'Thrusting_One_Hand_Sword',
+  'weapon.basemace': 'One_Hand_Mace',
+  'weapon.sceptre': 'Sceptre',
+  'weapon.basestaff': 'Staff',
+  'weapon.warstaff': 'Warstaff',
+  'weapon.twoaxe': 'Two_Hand_Axe',
+  'weapon.twomace': 'Two_Hand_Mace',
+  'weapon.twosword': 'Two_Hand_Sword',
+  'weapon.wand': 'Wand',
+  'weapon.rod': 'FishingRod',
+  'armour.chest': 'Body_Armour',
+  'armour.boots': 'Boots',
+  'armour.gloves': 'Gloves',
+  'armour.helmet': 'Helmet',
+  'armour.shield': 'Shield',
+  'armour.quiver': 'Quiver',
+  'accessory.amulet': 'Amulet',
+  'accessory.belt': 'Belt',
+  'accessory.ring': 'Ring',
+  'jewel.base': 'Jewel',
+  'jewel.abyss': 'AbyssJewel',
+}
+
+/** PoE1 pobBaseMap 클래스명 → modifiers 파일명. PoE2 와 이름이 같아도 짝이 다른 것(Charms)이 있어 표를 따로 둔다. */
+export const POE1_MOD_FILE_BY_POB_CLASS = {
+  'Amulets': 'Amulet',
+  'Belts': 'Belt',
+  'Rings': 'Ring',
+  'Body Armours': 'Body_Armour',
+  'Boots': 'Boots',
+  'Gloves': 'Gloves',
+  'Helmets': 'Helmet',
+  'Shields': 'Shield',
+  'Quivers': 'Quiver',
+  'Bows': 'Bow',
+  'Claws': 'Claw',
+  'Daggers': 'Dagger',
+  'Rune Daggers': 'Rune_Dagger',
+  'One Hand Axes': 'One_Hand_Axe',
+  'One Hand Maces': 'One_Hand_Mace',
+  'One Hand Swords': 'One_Hand_Sword',
+  'Thrusting One Hand Swords': 'Thrusting_One_Hand_Sword',
+  'Two Hand Axes': 'Two_Hand_Axe',
+  'Two Hand Maces': 'Two_Hand_Mace',
+  'Two Hand Swords': 'Two_Hand_Sword',
+  'Sceptres': 'Sceptre',
+  'Staves': 'Staff',
+  'Warstaves': 'Warstaff',
+  'Wands': 'Wand',
+  'Fishing Rods': 'FishingRod',
+  'Jewels': 'Jewel',
+  'Abyss Jewels': 'AbyssJewel',
+  'Life Flasks': 'LifeFlask',
+  'Mana Flasks': 'ManaFlask',
+  'Hybrid Flasks': 'HybridFlask',
+  'Utility Flasks': 'UtilityFlask',
+}
+
+/**
+ * 구체 유형이 없어 묶음 유형으로 맞춰야 하는 부위 — 속성 목록에서 이 부위를 골라 넣으면 거래소 유형을 여기로 바꾼다.
+ * 묶음이라 거꾸로(유형 → 부위) 쓰지 않는다: 「플라스크」 만으로는 넷 중 어느 것인지 모른다.
+ */
+const POE1_GROUP_CATEGORY = { LifeFlask: 'flask', ManaFlask: 'flask', HybridFlask: 'flask', UtilityFlask: 'flask' }
+
+/**
+ * 게임별 부위 표 한 벌. 기본(game 미지정)은 PoE2 — 이 모듈의 옛 호출부가 모두 PoE2 였다.
+ * @param {'poe1'|'poe2'|undefined|null} game
+ */
+export function classTables(game) {
+  if (game === 'poe1') {
+    return { byCategory: POE1_MOD_FILE_BY_CATEGORY, flat: {}, classByCategory: POE1_MOD_FILE_BY_CATEGORY, byPobClass: POE1_MOD_FILE_BY_POB_CLASS, unreleased: new Set(), groupCategory: POE1_GROUP_CATEGORY }
+  }
+  return { byCategory: MOD_FILE_BY_CATEGORY, flat: FLAT_CATEGORY, classByCategory: CLASS_BY_CATEGORY, byPobClass: MOD_FILE_BY_POB_CLASS, unreleased: UNRELEASED_CLASSES, groupCategory: {} }
+}
+
 /**
  * 객체 리터럴을 표로 쓸 때 `obj[key]` 는 프로토타입 속성까지 집는다 —
  * `표['toString']` 이 함수를 돌려주므로, 자기 속성일 때만 값을 낸다.
@@ -104,23 +193,25 @@ function own(table, key) {
 }
 
 /** @returns {string|null} modifiers 파일명, 부위를 특정할 수 없으면 null */
-export function classFromCategory(option) {
+export function classFromCategory(option, game) {
   if (option == null) return null
   const key = String(option)
+  const t = classTables(game)
   // `??` 를 쓴다 — `own()` 은 없을 때 정확히 null 을 낸다. `||` 로 두면 나중에 표 값이
   // 빈 문자열이 되는 실수가 생겼을 때 조용히 다음 표로 새어 나간다.
-  return own(MOD_FILE_BY_CATEGORY, key) ?? own(FLAT_CATEGORY, key)
+  return own(t.byCategory, key) ?? own(t.flat, key)
 }
 
 /**
  * @param {string|null} name 베이스 아이템의 한글 이름 (거래소 query.type)
- * @param {Record<string,[string,string]>} baseMap src/lib/pobBaseMap.json
+ * @param {Record<string,[string,string]>} baseMap src/lib/pobBaseMap.json (PoE1 은 pobBaseMap.poe1.json)
+ * @param {'poe1'|'poe2'} [game]
  */
-export function classFromBaseName(name, baseMap) {
+export function classFromBaseName(name, baseMap, game) {
   if (!name || !baseMap) return null
   const entry = own(baseMap, String(name))
   const pobClass = Array.isArray(entry) ? entry[1] : null
-  return pobClass ? own(MOD_FILE_BY_POB_CLASS, pobClass) : null
+  return pobClass ? own(classTables(game).byPobClass, pobClass) : null
 }
 
 /** 거래소가 변형 아이템의 type 을 {option, discriminator} 객체로 보내는 경우를 흡수한다. */
@@ -140,9 +231,10 @@ function typeText(v) {
  *
  * @param {any} query 거래소 검색 바디의 query
  * @param {Record<string,[string,string]>} baseMap
+ * @param {'poe1'|'poe2'} [game]
  */
-export function classFromQuery(query, baseMap) {
+export function classFromQuery(query, baseMap, game) {
   if (!query) return null
   const option = query?.filters?.type_filters?.filters?.category?.option
-  return classFromCategory(option) ?? classFromBaseName(typeText(query.type), baseMap)
+  return classFromCategory(option, game) ?? classFromBaseName(typeText(query.type), baseMap, game)
 }

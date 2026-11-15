@@ -109,7 +109,8 @@ describe('PoE1 — 없는 기능을 가르치지 않는다', () => {
     expect(titles).toContain('가격을 한눈에')
   })
 
-  it('PoE2 보다 스텝이 정확히 셋 적다 — 티어 칩 · 속성 목록 · 고유 모드', async () => {
+  // 속성 목록은 PoE1 에도 있다(2026-11-16) — 문구가 다른 PoE1 판 스텝이 PoE2 판 자리를 대신한다
+  it('PoE2 보다 스텝이 정확히 둘 적다 — 티어 칩 · 고유 모드', async () => {
     await mount('poe1')
     const one = await walkTitles()
     document.body.innerHTML = ''
@@ -118,9 +119,10 @@ describe('PoE1 — 없는 기능을 가르치지 않는다', () => {
     await chrome.storage.local.set({ tourDone: false })
     await mount('poe2')
     const two = await walkTitles()
-    expect(two.length - one.length).toBe(3)
+    expect(two.length - one.length).toBe(2)
     expect(two).toContain('속성 목록 — 붙는 속성을 골라 바로 넣기')
-    expect(one).not.toContain('속성 목록 — 붙는 속성을 골라 바로 넣기')
+    expect(one).toContain('속성 목록 — 붙는 속성을 골라 바로 넣기')
+    expect(one).not.toContain('고유 아이템도 속성 목록에서')
   })
 })
 

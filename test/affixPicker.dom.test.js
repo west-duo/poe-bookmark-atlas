@@ -578,8 +578,8 @@ describe('openAffixPopover', () => {
     const all = [
       'Bow', 'Spear', 'Wand', 'Helmet', 'Amulet', 'Ring', 'Body_Armour', 'Gloves', 'Boots', 'Belt',
       'Shield', 'Buckler', 'Focus', 'Quiver', 'LifeFlask', 'ManaFlask', 'UtilityFlask', 'Jewel', 'Relic', 'NewThing',
-    ].map((cls) => ({ cls, label: cls }))
-    const areaOf = (el, cls) => [...el.querySelectorAll(`.ba-affix-slot[data-cls="${cls}"]`)].map((b) => b.closest('.ba-affix-doll-area')?.classList[1] ?? b.dataset.area)
+    ].map((cls) => ({ cls, label: cls === 'UtilityFlask' ? '호신부' : cls })) // PoE2 거래소 flask.charm 의 표시 이름(2026-11-16 실측)
+    const areaOf =(el, cls) => [...el.querySelectorAll(`.ba-affix-slot[data-cls="${cls}"]`)].map((b) => b.closest('.ba-affix-doll-area')?.classList[1] ?? b.dataset.area)
 
     it('무기는 무기 영역, 보조 장비는 보조 영역, 가운데는 방어구 영역 하나 — 장신구(목걸이·반지·허리띠)는 그 안에서 표시만 다르다', () => {
       const { el } = open({ classes: all, currentClass: null, listForClass: () => list })
@@ -603,6 +603,18 @@ describe('openAffixPopover', () => {
       expect(el.querySelector('.ba-affix-doll-bottom .is-other')).not.toBeNull()
       // 배치에 없는 새 유형은 사라지지 않고 「주얼 · 기타」 에 붙는다
       expect(areaOf(el, 'NewThing')).toEqual(['is-other'])
+    })
+
+    it('PoE1 — 룬 단검은 마법 무기, 날카로운 한손 검은 한손 줄, 하이브리드 플라스크는 플라스크 영역(호신부가 없어 이름은 「플라스크」)', () => {
+      const poe1 = [['Bow', '활'], ['One_Hand_Sword', '기본 한손 검'], ['Thrusting_One_Hand_Sword', '레이피어'], ['Wand', '마법봉'], ['Rune_Dagger', '룬 단검'],
+        ['LifeFlask', '생명력 플라스크'], ['HybridFlask', '하이브리드 플라스크'], ['UtilityFlask', '특수 플라스크'], ['FishingRod', '낚싯대']].map(([cls, label]) => ({ cls, label }))
+      const { el } = open({ classes: poe1, currentClass: null, listForClass: () => list, game: 'poe1' })
+      const subs = [...el.querySelectorAll('.is-weapon .ba-affix-doll-sub')]
+      expect(subs.map((x) => [...x.querySelectorAll('.ba-affix-slot')].map((c) => c.dataset.cls)))
+        .toEqual([['Bow', 'One_Hand_Sword', 'Thrusting_One_Hand_Sword'], ['Wand', 'Rune_Dagger']])
+      expect(areaOf(el, 'HybridFlask')).toEqual(['is-flask'])
+      expect(areaOf(el, 'FishingRod')).toEqual(['is-other'])
+      expect(el.querySelector('.is-flask .ba-affix-doll-chip').textContent).toBe('플라스크')
     })
 
     it('고른 칸만 켜진다', () => {
