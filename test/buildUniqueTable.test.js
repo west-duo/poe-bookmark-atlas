@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { htmlLines, valuesByKey, matchLine, linesOf } from '../scripts/build-unique-table.mjs'
+import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved } from '../scripts/build-unique-table.mjs'
 
 // 문구는 poe2db 저장 HTML·거래소 목록의 실제 표기(2026-09-23). 틀려도 조용한 판정이라 대표 줄만 고정한다.
 const index = new Map([
@@ -40,5 +40,28 @@ describe('linesOf — 칸 묶음', () => {
     expect(counts.hidden).toBe(1)
     // 풀을 모르는 자리도 붙는 개수는 남긴다
     expect(out).toEqual([{ t: '[3 Random Socket Modifiers]', k: 'r', r: 3 }])
+  })
+})
+
+// 2026-11-15: 카카오 거래소가 살점 도가니 키스톤 선택지(`explicit.stat_3831171903|n`)를 영문에서 한글로 옮겼다.
+describe('키스톤 선택지 한글화 뒤에도 같은 표', () => {
+  it('고정 줄이 전용 조건과 선택지에 함께 맞으면 전용 조건 (조프리의 성역 「맹신자의 서약」)', () => {
+    expect(preferPlainIds(['explicit.stat_1315418254', 'explicit.stat_3831171903|33'])).toEqual(['explicit.stat_1315418254'])
+    // 보통 조건이 둘이면 그대로 후보로 둔다 (부랑자의 포옹 「정신력 +50」)
+    expect(preferPlainIds(['explicit.stat_3981240776', 'explicit.stat_2704225257'])).toEqual(['explicit.stat_3981240776', 'explicit.stat_2704225257'])
+  })
+
+  it('영문으로 관찰한 키스톤(「Blood Magic」)도 한글 선택지(「혈마법」)로 풀을 채운다', () => {
+    const entry = { n: '살점 도가니', b: '다이아몬드', f: [{ t: 'Random 1 Keystone Passive Skill [1,33]', k: 'r', r: 1 }] }
+    const entries = [
+      { id: 'explicit.stat_3831171903|5', text: '혈마법' },
+      { id: 'explicit.stat_3831171903|19', text: '오아시스' },
+    ]
+    const obs = { n: 1, l: [{ h: 'explicit.stat_3831171903|5', t: 'Blood Magic', c: 1 }] }
+    applyObserved(entry, obs, { entries, regular: new Set(), names: new Map([['blood magic', '혈마법']]) })
+    expect(entry.f[0].p).toEqual([
+      { t: '혈마법', id: 'explicit.stat_3831171903|5' },
+      { t: '오아시스', id: 'explicit.stat_3831171903|19' },
+    ])
   })
 })
