@@ -1,0 +1,25 @@
+{
+  "about": "PoE1 거래소에 문구가 완전히 같은 능력치 id 가 둘 있는 경우 매물이 실제로 걸리는 쪽. 형식·쓰임은 trade-twins.poe2.json 과 같다. scope \"*\" 는 모든 부위 — 플라스크처럼 거래소 유형이 하나로 정해지지 않는 부위도 걸린다.",
+  "measured": {
+    "date": "2026-11-16",
+    "host": "poe.kakaogames.com",
+    "league": "Covens",
+    "query": "status any · 능력치 id 하나(and) · 아이템 유형 = totals 의 키 · 희귀도 모든 비고유",
+    "how_to_refresh": "build-tier-table --game poe1 이 「문구가 같은데 실측이 없는 id 쌍」을 보고하면 그 부위 카테고리로 두 id 를 각각 검색해 0건인 쪽을 drop 에 적는다. 요청 사이 15초."
+  },
+  "rules": [
+    { "text": "화염 저항 +#% ↔ 화염 저항 #% (부호만 다름)", "scope": "*", "keep": "explicit.stat_3372524247", "drop": "explicit.stat_763311546", "totals": { "armour.gloves": [10000, 0] } },
+    { "text": "냉기 저항 +#% ↔ 냉기 저항 #% (부호만 다름)", "scope": "*", "keep": "explicit.stat_4220027924", "drop": "explicit.stat_496075050", "totals": { "accessory.ring": [10000, 0] } },
+    { "text": "번개 저항 +#% ↔ 번개 저항 #% (부호만 다름)", "scope": "*", "keep": "explicit.stat_1671376347", "drop": "explicit.stat_1942151132", "totals": { "armour.chest": [10000, 0] } },
+    { "text": "아이템 희귀도 +#% (고정)", "scope": "*", "keep": "implicit.stat_3917489142", "drop": "implicit.stat_190932737", "totals": { "accessory.ring": [10000, 0], "accessory.amulet": [10000, 0] } },
+    { "text": "주문 피해 억제 확률 +#%", "scope": "*", "keep": "explicit.stat_3680664274", "drop": "explicit.stat_492027537", "totals": { "armour.boots": [10000, 0], "armour.shield": [10000, 0] } },
+    { "text": "주문 피해 억제 확률 +#% (고정)", "scope": "*", "keep": "implicit.stat_3680664274", "drop": "implicit.stat_492027537", "totals": { "armour.boots": [64, 0], "armour.quiver": [2, 0] } },
+    { "text": "치명타 명중 시 #%의 확률로 플라스크 1 충전", "scope": "*", "keep": "explicit.stat_3738001379", "drop": "explicit.stat_2858921304", "totals": { "flask": [10000, 0] } },
+    { "text": "결의의 마나 점유 효율 #% 증가 (고정)", "scope": "*", "keep": "implicit.stat_325889252", "drop": "implicit.stat_2721871046", "totals": { "accessory.ring": [231, 0] } },
+    { "text": "단련의 마나 점유 효율 #% 증가 (고정)", "scope": "*", "keep": "implicit.stat_2081344089", "drop": "implicit.stat_1692887998", "totals": { "accessory.ring": [235, 0] } },
+    { "text": "은총의 마나 점유 효율 #% 증가 (고정)", "scope": "*", "keep": "implicit.stat_900639351", "drop": "implicit.stat_1803598623", "totals": { "accessory.ring": [260, 0] } },
+    { "text": "효과 #% 증가 (특수 플라스크)", "scope": "*", "keep": "explicit.stat_2448920197", "drop": "explicit.stat_3529940209", "totals": { "flask": [10000, 0] } },
+    { "text": "효과를 받는 동안 #%의 확률로 냉각 긴급회피", "scope": "*", "keep": "explicit.stat_1619168299", "drop": "explicit.stat_1053326368", "totals": { "flask": [1622, 0] } },
+    { "text": "효과를 받는 동안 #%의 확률로 동결 긴급회피", "scope": "*", "keep": "explicit.stat_475518267", "drop": "explicit.stat_2872815301", "totals": { "flask": [1623, 0] } }
+  ]
+}

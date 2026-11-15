@@ -70,8 +70,9 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
             <span class="ba-kbd-chip">${icon('keyboard', 15)}</span>
             <div class="ba-kbd-pop">
               <div class="ba-kbd-pop-group">패널 단축키</div>
-              <div class="ba-kbd-pop-row"><span>패널 열기 / 접기</span><span class="ba-kbd-keys"><kbd>Alt</kbd><kbd>B</kbd></span></div>
-              <div class="ba-kbd-pop-row"><span>현재 검색 저장</span><span class="ba-kbd-keys"><kbd>Alt</kbd><kbd>S</kbd></span></div>
+              <div class="ba-kbd-pop-row"><span>패널 열기 / 접기</span><span class="ba-kbd-keys" data-cmd="toggle-panel"><kbd>Alt</kbd><kbd>B</kbd></span></div>
+              <div class="ba-kbd-pop-row"><span>현재 검색 저장</span><span class="ba-kbd-keys" data-cmd="save-search"><kbd>Alt</kbd><kbd>S</kbd></span></div>
+              <div class="ba-kbd-pop-sub" id="ba-kbd-unset" hidden>지정 안 된 단축키는 <b>확장 프로그램 아이콘 → 패널 단축키 변경하기</b>에서 정해요</div>
               <div class="ba-kbd-pop-row"><span>북마크·히스토리 검색</span><span class="ba-kbd-keys"><kbd>Alt</kbd><kbd>K</kbd></span></div>
               <div class="ba-kbd-pop-row"><span>설정</span><span class="ba-kbd-keys"><kbd>Alt</kbd><kbd>O</kbd></span></div>
               <div class="ba-kbd-pop-group">검색 단축키</div>
@@ -1492,8 +1493,8 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
     // 없는 기능을 가르치면 "내 화면엔 왜 없냐"는 문의가 그대로 돌아온다.
     { sel: '.ba-tier-chip', global: true, demo: true, game: 'poe2', since: '0.13.0', title: 'T1 수치를 클릭 한 번에',
       body: '능력치 필터에서 이름 뒤에 <b>T1 T2 T3</b> 칩이 붙어요. 누르면 그 티어의 수치가 입력칸에 바로 들어갑니다 — DB에서 숫자를 찾아 옮겨 적지 않아도 돼요. 보통 <b>최소</b> 칸이고, <b>능력치 요구사항 감소</b>처럼 값이 음수인 능력치는 <b>최대</b> 칸에 들어가요(작을수록 좋으니까요). 값은 <b>아이템 유형</b>과 <b>아이템 레벨</b>에 따라 달라집니다(반지 생명력 T1은 100, 갑옷은 200). 유형을 아직 안 고르셨으면 칩 대신 <b>부위?</b>가 떠요. 지금은 PoE2 거래소에서만 동작합니다.' },
-    // 속성 목록도 PoE2 전용이다(content-main renderAffixButtons 가 poe2 가 아니면 나간다). 대상 칩이 화면에 없으면
-    // 예시 카드(demoTierHtml)의 같은 클래스 칩을 가리킨다. since 는 다음 릴리즈 — WHATS_NEW_VERSION 을 올릴 때 함께 뽑힌다.
+    // 속성 목록 PoE2 판 — 공급원 띠(에센스·훼손된·합금)와 서판 종류는 PoE2 에만 있다. PoE1 판은 아래 스텝.
+    // 대상 칩이 화면에 없으면 예시 카드(demoTierHtml)의 같은 클래스 칩을 가리킨다.
     { sel: '.ba-affix-btn', global: true, demo: true, game: 'poe2', since: '0.14.0', title: '속성 목록 — 붙는 속성을 골라 바로 넣기',
       body: '능력치 그룹의 <b>+ 능력치 필터 추가</b> 아래 <b>속성 목록</b> 칩을 누르면, 그 아이템 유형에 붙는 속성이 <b>왼쪽 접두어 · 오른쪽 접미어</b>로 떠요(기본 · 타락 · 에센스 · 훼손된 · 합금 · 특수 속성 줄).<br>' +
         '① <b>유형 고르기</b> — 창 위쪽 <b>장비창</b>에서 칸을 누르세요. 주얼·서판은 루비·균열 서판 같은 <b>종류</b>까지 고를 수 있어요.<br>' +
@@ -1501,6 +1502,14 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
         '③ <b>값</b> — 행의 <b>T1 T2 T3</b>(또는 범위)을 누르면 수치까지 넣어요. 여러 띠에 같은 조건이 있으면 <b>같은 조건</b> 칩이 붙고, 한 곳만 골라도 함께 체크돼요.<br>' +
         '넣을 때 거래소의 <b>아이템 유형</b>과 <b>희귀도(모든 비고유)</b>도 맞춰 드려요. 검색은 직접 눌러야 돌아요.<br>' +
         '고유 아이템을 찾으신다면 창 위쪽 <b>비고유 | 고유</b>에서 <b>고유</b>로 바꾸세요 — 다음 단계에서 설명할게요.' },
+    // PoE1 속성 목록 — PoE2 스텝과 같은 칩이지만 공급원(타락만 · 에센스·훼손된·합금 없음)과 고유 전환이 달라 따로 둔다.
+    // since 는 이 기능이 실릴 릴리즈 — WHATS_NEW_VERSION 을 그 값으로 올리면 PoE1 사용자에게 새 기능 투어로 뜬다.
+    { sel: '.ba-affix-btn', global: true, demo: true, game: 'poe1', since: '0.16.0', title: '속성 목록 — 붙는 속성을 골라 바로 넣기',
+      body: '능력치 그룹의 <b>+ 능력치 필터 추가</b> 아래 <b>속성 목록</b> 칩을 누르면, 그 아이템 유형에 붙는 속성이 <b>왼쪽 접두어 · 오른쪽 접미어</b>로 떠요(기본 · 타락 고정 속성).<br>' +
+        '① <b>유형 고르기</b> — 창 위쪽 <b>장비창</b>에서 칸을 누르세요.<br>' +
+        '② <b>체크하면 후보</b> — 후보 중 정한 개수 이상인 아이템을 찾아요. 꼭 붙어 있어야 하면 행의 <b>필수</b>를 누르세요. 몇 개 이상인지는 <b>접두어·접미어 제목 줄</b>의 「후보 중 최소」에서 정해요.<br>' +
+        '③ <b>값</b> — 행의 <b>T1 T2 T3</b>(또는 범위)을 누르면 수치까지 넣어요.<br>' +
+        '넣을 때 거래소의 <b>아이템 유형</b>과 <b>희귀도(모든 비고유)</b>도 맞춰 드려요. 검색은 직접 눌러야 돌아요. 주얼은 아직 목록이 없어요.' },
     // 고유 모드(0.15.0) — 같은 속성 목록 창의 「고유」 전환. 대상은 속성 목록 칩(없으면 예시 카드의 칩)
     { sel: '.ba-affix-btn', global: true, demo: true, game: 'poe2', since: '0.15.1', title: '고유 아이템도 속성 목록에서',
       body: '속성 목록 창 위쪽의 <b>비고유 | 고유</b>에서 <b>고유</b>를 누르면, 왼쪽에 고유 아이템 이름이 뜨고 오른쪽에 그 고유의 <b>기본 · 고정 속성</b>이 떠요. 검색칸에 <b>이름이나 속성</b>을 치면 유형과 상관없이 찾아요.<br>' +
@@ -1544,7 +1553,7 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
       body: '⚙ 안에 여덟 가지가 있어요 — <b>패널 위치</b>(좌/우), <b>검색 열기</b>(현재 탭 / 새 탭), <b>패널 폭</b>(기본~최대), <b>보기</b>(기본 / 간략), <b>상단 영역</b>(표시 / 간결), <b>섹션 순서</b>, <b>필터 퍼지 검색</b>, <b>속성 목록 강조</b>(켬 / 끔). 아래 <b>하나씩 볼게요</b>를 누르면 여덟 가지를 차례로 짚어드려요 (Alt+O).',
       branch: { label: '하나씩 볼게요', steps: SETTINGS_TOUR } },
     { sel: '#ba-handle', title: '언제든 접기', body: '우측 핸들을 클릭하면 패널을 접고 펼칠 수 있어요 (Alt+B).' },
-    { sel: '.ba-kbd-chip', title: '단축키 모음 & 변경', body: '⌨ 칩에 마우스를 올리면 모든 단축키가 정리돼 떠요 — Alt+A 능력치 필터 추가(반복 시 그룹 전환)가 특히 편해요. 패널 단축키(Alt+B·S)는 chrome://extensions/shortcuts 에서 직접 바꿀 수 있어요. 준비 끝!' },
+    { sel: '.ba-kbd-chip', title: '단축키 모음 & 변경', body: '⌨ 칩에 마우스를 올리면 모든 단축키가 정리돼 떠요 — Alt+A 능력치 필터 추가(반복 시 그룹 전환)가 특히 편해요. 패널 단축키(기본 Alt+B·S)는 chrome://extensions/shortcuts 에서 직접 바꿀 수 있어요 — 다른 확장과 겹쳐 비어 있으면 칩에 「지정 안 됨」이 떠요. 준비 끝!' },
   ]
   // ── '새로워진 기능' 안내 ────────────────────────────────────────────
   // 투어를 이미 본 사용자(tourDone)는 스텝을 아무리 고쳐도 **영영 다시 보지 않는다.**
@@ -1906,11 +1915,37 @@ export function mountPanel({ game, league, getLeagueMap, getCurrentSearch, migra
     up.hidden = false
   })()
 
+  /**
+   * 단축키 팝오버의 패널 단축키를 크롬에 지금 배정된 값으로 바꾼다. 빈 값 = 배정 안 됨 — 그대로 Alt+S 라고 써 두면
+   * 눌러도 안 되는 키를 가르치게 된다(다른 확장과 겹치면 크롬이 기본 키를 비워 둔다).
+   * @param {Record<string,string[]>} keys 명령 이름 → 키 조각(['Alt','S']), 빈 배열이면 지정 안 됨
+   */
+  const setCommandKeys = (keys) => {
+    let unset = false
+    for (const el of root.querySelectorAll('.ba-kbd-keys[data-cmd]')) {
+      const parts = keys?.[el.dataset.cmd]
+      if (!Array.isArray(parts)) continue
+      el.replaceChildren()
+      if (!parts.length) {
+        unset = true
+        const s = document.createElement('span'); s.className = 'ba-kbd-unset'; s.textContent = '지정 안 됨'
+        el.appendChild(s)
+        continue
+      }
+      for (const p of parts) { const k = document.createElement('kbd'); k.textContent = p; el.appendChild(k) }
+    }
+    const hint = $('ba-kbd-unset'); if (hint) hint.hidden = !unset
+    const handle = $('ba-handle-toggle')
+    const toggleKeys = keys?.['toggle-panel']
+    if (handle && Array.isArray(toggleKeys)) handle.dataset.tip = '클릭하면 패널을 접고 펼쳐요' + (toggleKeys.length ? ` (${toggleKeys.join('+')})` : '')
+  }
+
   return {
     toggle: () => setCollapsed(!isCollapsed()),
     show: () => setCollapsed(false),
     hide: () => setCollapsed(true),
     save: doSave,
+    setCommandKeys,
     startTour,
     toast, // 페이지 표면(결과 행 ★ 등)에서도 같은 토스트를 쓰기 위해 노출
   }

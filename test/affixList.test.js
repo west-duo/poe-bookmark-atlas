@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { affixListFor, affixFilterValue, affixPicksOf, uniquePicks, filterAffixes, allAffixItems, basesFor } from '../src/lib/affixList.js'
 import realTable from '../src/lib/statTiers.poe2.json'
 import realAffixes from '../src/lib/statAffixes.poe2.json'
+import poe1Table from '../src/lib/statTiers.poe1.json'
+import poe1Affixes from '../src/lib/statAffixes.poe1.json'
 
 const table = {
   Gloves: {
@@ -258,6 +260,41 @@ describe('실제 데이터 — statAffixes 와 statTiers 가 같은 능력치를
 
   it('주얼 반경판이 제대로 이어져 주얼 능력치가 수백 개다 (전에는 값 충돌로 7개)', () => {
     expect(Object.keys(realTable.Jewel).length).toBeGreaterThan(250)
+  })
+})
+
+describe('실제 데이터 PoE1 — statAffixes.poe1 와 statTiers.poe1 이 같은 능력치를 가리킨다', () => {
+  it('부위 집합이 같고, 부위마다 id 집합이 같다', () => {
+    expect(Object.keys(poe1Affixes).sort()).toEqual(Object.keys(poe1Table).sort())
+    for (const cls of Object.keys(poe1Table)) {
+      const listed = [...poe1Affixes[cls].p, ...poe1Affixes[cls].s]
+      expect(new Set(listed).size).toBe(listed.length)
+      expect([...listed].sort()).toEqual(Object.keys(poe1Table[cls]).sort())
+    }
+  })
+
+  it('주얼은 싣지 않는다 — poe-game-data 의 PoE1 주얼 파일이 아틀라스 속성을 담고 있다', () => {
+    expect(poe1Affixes.Jewel).toBeUndefined()
+    expect(poe1Affixes.AbyssJewel).toBeUndefined()
+  })
+
+  it('타락 속성은 고정(implicit) 조건이다 — PoE1 인챈트는 연구소 인챈트라 다른 것', () => {
+    const ids = Object.values(poe1Affixes).flatMap((e) => Object.keys(e.x ?? {}))
+    expect(ids.length).toBeGreaterThan(100)
+    for (const id of ids) expect(id).toMatch(/^implicit\./)
+  })
+
+  it('거래소 유형이 없는 플라스크 넷만 게임 표기 이름(n)을 싣는다', () => {
+    const named = Object.fromEntries(Object.entries(poe1Affixes).filter(([, e]) => e.n).map(([c, e]) => [c, e.n]))
+    expect(named).toEqual({ LifeFlask: '생명력 플라스크', ManaFlask: '마나 플라스크', HybridFlask: '하이브리드 플라스크', UtilityFlask: '특수 플라스크' })
+    expect(Object.values(realAffixes).some((e) => e.n)).toBe(false) // PoE2 는 모두 거래소 유형 이름을 쓴다
+  })
+
+  it('장갑 목록 — 실제 PoE1 속성이 접두·접미로 뜬다', () => {
+    const list = affixListFor({ table: poe1Table, affixes: poe1Affixes, itemClass: 'Gloves', statMap: { 'explicit.stat_3299347043': '생명력 최대치 +#', 'explicit.stat_3372524247': '화염 저항 +#%' } })
+    expect(list.status).toBe('ok')
+    expect(list.prefix.map((i) => i.id)).toContain('explicit.stat_3299347043')
+    expect(list.suffix.map((i) => i.id)).toContain('explicit.stat_3372524247')
   })
 })
 

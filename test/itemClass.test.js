@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { classFromCategory, classFromBaseName, classFromQuery, MOD_FILE_BY_CATEGORY, MOD_FILE_BY_POB_CLASS } from '../src/lib/itemClass.js'
+import { classFromCategory, classFromBaseName, classFromQuery, classTables, MOD_FILE_BY_CATEGORY, MOD_FILE_BY_POB_CLASS } from '../src/lib/itemClass.js'
 
 const baseMap = { '루비 반지': ['Ruby Ring', 'Rings'], '황금 외투': ['Golden Mantle', 'Body Armours'] }
 
@@ -73,6 +73,27 @@ describe('대응표 자체', () => {
   // 호신부의 modifiers 파일은 이름이 'Charm' 이 아니라 'UtilityFlask' 다 — 게임 데이터의 옛 내부 이름이
   // 남은 것이다(UtilityFlask.json 의 className 이 { en: 'Charms', kr: '호신부' } — 2026-09-14 확인).
   // 대응표에 없어서 유형을 '호신부' 로 골라도 '부위?' 만 떴고, 표에 있던 호신부 항목 8개가 한 번도 안 떴다.
+  it('PoE1 — 구체 유형만 부위가 되고, 「모든 …」 묶음은 베이스 이름으로 내려간다', () => {
+    expect(classFromCategory('weapon.runedagger', 'poe1')).toBe('Rune_Dagger')
+    expect(classFromCategory('weapon.rapier', 'poe1')).toBe('Thrusting_One_Hand_Sword')
+    expect(classFromCategory('weapon.basestaff', 'poe1')).toBe('Staff')
+    expect(classFromCategory('weapon.dagger', 'poe1')).toBe(null) // 단검 + 룬 단검
+    expect(classFromCategory('flask', 'poe1')).toBe(null)
+    expect(classFromCategory('armour.focus', 'poe1')).toBe(null) // PoE2 에만 있는 유형
+    expect(classFromCategory('jewel', 'poe1')).toBe(null)
+    const poe1Map = { '룬 단검': ['Rune Dagger', 'Rune Daggers'], '신성한 생명력 플라스크': ['Divine Life Flask', 'Life Flasks'], '부적': ['Charm', 'Charms'] }
+    expect(classFromQuery({ type: '룬 단검' }, poe1Map, 'poe1')).toBe('Rune_Dagger')
+    expect(classFromQuery({ type: '신성한 생명력 플라스크', filters: { type_filters: { filters: { category: { option: 'flask' } } } } }, poe1Map, 'poe1')).toBe('LifeFlask')
+    expect(classFromQuery({ type: '부적' }, poe1Map, 'poe1')).toBe(null) // PoE1 Charms 는 호신부가 아니다
+  })
+
+  it('PoE1 플라스크 넷은 넣을 때 거래소 유형을 묶음 「flask」 로 맞춘다 — PoE2 는 그런 부위가 없다', () => {
+    const { groupCategory } = classTables('poe1')
+    expect(['LifeFlask', 'ManaFlask', 'HybridFlask', 'UtilityFlask'].map((c) => groupCategory[c])).toEqual(['flask', 'flask', 'flask', 'flask'])
+    expect(groupCategory.Ring).toBeUndefined()
+    expect(classTables('poe2').groupCategory).toEqual({})
+  })
+
   it('호신부는 유형 선택으로도, 베이스 이름으로도 UtilityFlask 다', () => {
     expect(MOD_FILE_BY_CATEGORY['flask.charm']).toBe('UtilityFlask')
     expect(MOD_FILE_BY_POB_CLASS['Charms']).toBe('UtilityFlask')

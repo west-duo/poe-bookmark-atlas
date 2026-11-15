@@ -93,8 +93,12 @@ export function affixCategoryOf(statName, itemClass = null) {
   return rules.find((c) => c.re.test(name))?.key ?? 'other'
 }
 
+// PoE1 에는 정신력·호신부가 없다 — 그 둘이 들어간 묶음 이름만 바꾼다(규칙·순서는 같다)
+const POE1_LABEL = new Map([['resource', '생명력·마나'], ['flask', '플라스크']])
+
 /** 종류 키 → 화면 이름. 모르는 키는 기타로 본다. */
-export function affixCategoryLabel(key) {
+export function affixCategoryLabel(key, game) {
+  if (game === 'poe1' && POE1_LABEL.has(key)) return POE1_LABEL.get(key)
   return LABEL.get(key) ?? LABEL.get('other')
 }
 
@@ -103,9 +107,10 @@ export function affixCategoryLabel(key) {
  * @template T
  * @param {T[]} items
  * @param {(item:T)=>string|undefined} keyOf
+ * @param {'poe1'|'poe2'} [game] 묶음 이름의 게임 표기
  * @returns {Array<{key:string, label:string, items:T[]}>}
  */
-export function groupByCategory(items, keyOf) {
+export function groupByCategory(items, keyOf, game) {
   const buckets = new Map()
   for (const item of items) {
     const raw = keyOf(item)
@@ -115,5 +120,5 @@ export function groupByCategory(items, keyOf) {
   }
   return [...buckets.entries()]
     .sort((a, b) => ORDER.get(a[0]) - ORDER.get(b[0]))
-    .map(([key, list]) => ({ key, label: affixCategoryLabel(key), items: list }))
+    .map(([key, list]) => ({ key, label: affixCategoryLabel(key, game), items: list }))
 }

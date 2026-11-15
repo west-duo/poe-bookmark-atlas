@@ -34,6 +34,17 @@ const ICON = {
   Wand: 'M5 19 15 9M18 3l.8 2.2L21 6l-2.2.8L18 9l-.8-2.2L15 6l2.2-.8z',
   Sceptre: 'M6 20l8-8M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19 2l-1 2',
   Staff: 'M9 21V8M9 8c-3-1-3-5 0-5s4 3 2 5',
+  // PoE1 에서 처음 보이는 무기(PoE2 에서는 출시 전이라 칸이 없었다)
+  Claw: 'M6 20 9 9M10 20l3-11M14 20l3-11M8 9h10',
+  Dagger: 'M5 19l2-2M7 17 17 7l1-3-3 1L5 15M8 13l3 3',
+  Rune_Dagger: 'M5 19l2-2M7 17 17 7l1-3-3 1L5 15M8 13l3 3M18 14l1 2 2 1-2 1-1 2-1-2-2-1 2-1z',
+  One_Hand_Sword: 'M5 19l2-2M7 17 19 5M6 13l5 5',
+  Thrusting_One_Hand_Sword: 'M5 19l2-2M7 17 20 4M6 14l4 4M8 12c-1 1-1 3 0 4',
+  Two_Hand_Sword: 'M3 21l3-3M6 18 20 4M4 14l6 6M7 15l2 2',
+  One_Hand_Axe: 'M5 20 15 10M13 6c3-2 6 0 6 3l-3 3c-2-1-3-3-3-6z',
+  Two_Hand_Axe: 'M4 20 15 9M11 5c3-3 7-1 8 2l-4 4c-3-1-4-3-4-6zM15 9c3 0 5 3 4 6',
+  FishingRod: 'M4 20 18 4M18 4v12M18 16a2 2 0 1 1-2 2',
+  HybridFlask: 'M10 3h4v5l4 5v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6l4-5zM12 12v9',
   Talisman: 'M12 3l6 6-6 12-6-12zM6 9h12',
   Jewel: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 8l4 2.5v3L12 16l-4-2.5v-3z',
   Relic: 'M9 3h6M10 3v3c-4 2-5 6-4 10 1 3 3 5 6 5s5-2 6-5c1-4 0-8-4-10V3',
@@ -54,10 +65,11 @@ export const DOLL_LAYOUT = {
   weapon: [
     { key: 'martial', title: '무도 무기', rows: [
       ['Bow', 'Crossbow'],
-      ['Spear', 'One_Hand_Mace', 'Claw', 'Dagger', 'One_Hand_Sword', 'One_Hand_Axe', 'Flail'],
+      ['Spear', 'One_Hand_Mace', 'Claw', 'Dagger', 'One_Hand_Sword', 'Thrusting_One_Hand_Sword', 'One_Hand_Axe', 'Flail'],
       ['Two_Hand_Mace', 'Warstaff', 'Talisman', 'Two_Hand_Sword', 'Two_Hand_Axe'],
     ] },
-    { key: 'caster', title: '마법 무기', rows: [['Wand', 'Sceptre', 'Staff']] },
+    // 룬 단검(PoE1)은 시전자 무기로 둔다 — 마법봉·셉터와 같은 주문 계열 속성이 붙는다
+    { key: 'caster', title: '마법 무기', rows: [['Wand', 'Sceptre', 'Rune_Dagger', 'Staff']] },
   ],
   offhand: ['Shield', 'Buckler', 'Focus', 'Quiver'],
   // 방어구 영역 칸 — 자리는 CSS grid-area(data-area)로 정한다. kind 'jewellery' 는 장신구 테두리로 구분한다.
@@ -67,10 +79,10 @@ export const DOLL_LAYOUT = {
     { cls: 'Body_Armour', area: 'body' }, { cls: 'Ring', area: 'ring', kind: 'jewellery' },
     { cls: 'Gloves', area: 'gloves' }, { cls: 'Belt', area: 'belt', kind: 'jewellery' }, { cls: 'Boots', area: 'boots' },
   ],
-  flask: ['LifeFlask', 'ManaFlask', 'UtilityFlask'],
+  flask: ['LifeFlask', 'ManaFlask', 'HybridFlask', 'UtilityFlask'],
   jewel: ['Jewel'],
   // 기타 — 유물 뒤에 이 배치에 없는 새 유형이 붙는다
-  other: ['Relic', 'TowerAugmentation'],
+  other: ['Relic', 'TowerAugmentation', 'FishingRod'],
 }
 
 const NS = 'http://www.w3.org/2000/svg'
@@ -88,10 +100,10 @@ function icon(doc, cls) {
  * 장비창 모양 유형 선택기를 만든다.
  * @param {Document} doc
  * @param {Array<{cls:string,label:string}>} classes 고를 수 있는 유형(표에 목록이 있는 것만, 이름은 거래소 표기)
- * @param {{onPick:(cls:string)=>void}} ctx
+ * @param {{onPick:(cls:string)=>void, game?:'poe1'|'poe2'}} ctx  game — PoE1 에는 호신부가 없어 플라스크 영역 이름이 다르다
  * @returns {{el:HTMLElement, buttons:HTMLButtonElement[], setCurrent:(cls:string|null)=>void, setOpen:(open:boolean)=>void, isOpen:()=>boolean}}
  */
-export function buildTypeDoll(doc, classes, { onPick }) {
+export function buildTypeDoll(doc, classes, { onPick, game = 'poe2' }) {
   const byCls = new Map(classes.map((c) => [c.cls, c]))
   const placed = new Set()
   const buttons = []
@@ -191,7 +203,7 @@ export function buildTypeDoll(doc, classes, { onPick }) {
     center.appendChild(armour)
   }
   const offhand = group('offhand', '보조', DOLL_LAYOUT.offhand)
-  const flask = group('flask', '플라스크 · 호신부', DOLL_LAYOUT.flask)
+  const flask = group('flask', game === 'poe1' ? '플라스크' : '플라스크 · 호신부', DOLL_LAYOUT.flask)
   const jewel = group('jewel', '주얼', DOLL_LAYOUT.jewel)
   const leftovers = classes.map((c) => c.cls).filter((cls) => !placed.has(cls) && !DOLL_LAYOUT.other.includes(cls))
   const other = group('other', '기타', [...DOLL_LAYOUT.other, ...leftovers])
