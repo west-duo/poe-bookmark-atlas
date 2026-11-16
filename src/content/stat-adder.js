@@ -34,7 +34,8 @@
   // explicit.stat_1573130764 · pseudo.pseudo_total_life · 선택형 조건 explicit.stat_264262054|8(거래소 목록이 옵션마다 따로 준 id)
   const ID_RE = /^[a-z]+\.[a-z0-9_]+(?:\|\d+)?$/
   const MAX_ITEMS = 40
-  const ROLES = new Set(['here', 'and', 'or', 'or:prefix', 'or:suffix', 'or:skill']) // or:skill — 스킬 부여 후보(따로 개수 그룹)
+  // or:skill — 스킬 부여 후보(따로 개수 그룹). or:flag·or:manual — 수치 없는 속성·값 직접 입력 띠(affix-picker OWN_OR_SOURCES 와 같이 바꾼다)
+  const ROLES = new Set(['here', 'and', 'or', 'or:prefix', 'or:suffix', 'or:skill', 'or:flag', 'or:manual'])
   // or:alt<n> — 고유 모드에서 문구가 같은 조건 둘을 「둘 중 하나」로 넣는 줄마다의 개수 그룹(최소 1)
   const isRole = (r) => typeof r === 'string' && (ROLES.has(r) || /^or:alt\d{1,2}$/.test(r))
 

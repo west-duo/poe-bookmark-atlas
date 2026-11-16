@@ -361,8 +361,17 @@ async function main() {
     const categoryById = {}
     const modIdsById = {} // 표에 실린 사다리를 만든 모드들 — 베이스별 목록(bases)을 모드 id 에서 능력치 id 로 옮기는 데 쓴다
     const flagById = {} // 값 칸이 없는 조건(「○○ 패시브 스킬 1개 추가」) — FLAG_POOL_GAMES 면 따로 띠로 싣는다
+    const manualById = {} // 같은 요구 레벨에 값이 둘이라 사다리를 못 만든 조건 — FLAG_POOL_GAMES 면 「값 직접 입력」 띠로 싣는다
     for (const { cands, rows, inferred, affix, statNames, modIds } of families.values()) {
-      if (hasValueConflict(rows)) { conflicts++; continue }
+      if (hasValueConflict(rows)) {
+        conflicts++
+        // PoE1 스킬 군 주얼: 일반판과 소형판(…Small) 모드가 같은 요구 레벨에 다른 값이다(힘 [6,8] ↔ [12,14]) — 데이터에 베이스가 없어
+        // 어느 쪽인지 가를 수 없다. 버리면 능력치·저항·생명력 같은 흔한 속성이 통째로 빠지므로 값은 사용자에게 맡긴다(독립 검토 2026-11-16).
+        cands.forEach((ids, lineIndex) => {
+          for (const id of ids) if (!classTrade.valueless.has(id)) manualById[id] ??= { c: affixCategoryOf(statNames[lineIndex], cls), o: 1 }
+        })
+        continue
+      }
       rows.sort((a, b) => b.ilvl - a.ilvl) // 필요 아이템 레벨이 높은 쪽이 T1
       // **문장마다 따로** 사다리를 만든다 — 한 모드가 두 문장을 가지면 값 슬롯도 문장별로 갈린다.
       // 통째로 쓰면 한 문장짜리 능력치에 옆 문장 값이 따라붙는다.
@@ -433,6 +442,13 @@ async function main() {
     }
     // 수치 없는 속성 — 스킬 군 주얼 특출 패시브(「파괴의 요원 패시브 스킬 1개 추가」 291개) 같은 조건. 붙어 있기만 하면 걸린다.
     // 티어 표에는 싣지 않는다(사다리가 없다). 값을 열어 둔 한 흐름(o·f)으로 그린다 — 스킬 부여 띠와 같은 모양이다.
+    for (const id of Object.keys(byStat)) delete manualById[id] // 다른 계열에서 사다리를 얻은 조건은 일반 열에 있다
+    if (FLAG_POOL_GAMES.has(game) && Object.keys(manualById).length) {
+      mechanics.push({ key: 'manual', n: '베이스마다 수치가 달라 티어를 정하지 않았어요 — 값은 거래소 칸에 직접 넣어요', t: '값을 직접 넣는 속성', f: 1, x: manualById })
+      specialCounts.manual ??= { total: 0, matched: 0 }
+      specialCounts.manual.total += Object.keys(manualById).length
+      specialCounts.manual.matched += Object.keys(manualById).length
+    }
     if (FLAG_POOL_GAMES.has(game) && Object.keys(flagById).length) {
       mechanics.push({ key: 'flag', n: '수치 없이 붙는 속성 — 붙어 있기만 하면 걸려요', t: '수치 없는 속성', f: 1, x: flagById })
       specialCounts.flag ??= { total: 0, matched: 0 }
