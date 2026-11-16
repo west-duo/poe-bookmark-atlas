@@ -375,8 +375,45 @@ export function createUniquePane(doc, { table, onChange, observe = null, game = 
     })
     paintRoles()
     if (mutated) r.classList.add('is-mutated')
+    r.dataset.key = key
+    swapChip(e, kind, line, i, text)
     r.append(box, text, min, max, roles)
     return r
+  }
+
+  /**
+   * 삿된(PoE1) 짝 — 삿된 줄 `rf` 는 그 줄이 대신하는 고정 줄 번호다. 삿된 줄에는 「○○ 대신」, 바뀌는 고정 줄에는 「삿된 시 바뀜」 칩.
+   * 둘 다 붙은 매물은 없어서 함께 고르지 못하게 한다(ensure → dropSwapped).
+   */
+  function swappedKeys(e, kind, line, i) {
+    if (kind === 'm') return (line.rf ?? []).map((n) => `f|${n}`)
+    if (kind === 'f' && typeof i === 'number') return (e.m ?? []).flatMap((l, j) => (l.rf?.includes(i) ? [`m|${j}`] : []))
+    return []
+  }
+  function swapChip(e, kind, line, i, textEl) {
+    const others = swappedKeys(e, kind, line, i)
+    if (!others.length) return
+    const textOf = (k) => { const [kd, n] = k.split('|'); return (e[kd]?.[Number(n)]?.t ?? '').replace(/\n/g, ' / ') }
+    const short = (s) => (s.length > 16 ? s.slice(0, 15) + '…' : s)
+    const c = el(doc, 'i', 'ba-uq-imbue-chip', kind === 'm' ? `「${short(textOf(others[0]))}」 대신` : `${W.short} 시 바뀜`)
+    c.dataset.tip = kind === 'm'
+      ? `${W.filter}은 이 속성이 고정 속성 ${others.map((k) => `「${textOf(k)}」`).join(' · ')} 대신 붙어요\n둘 다 붙은 매물은 없어서 함께 고를 수 없어요`
+      : `${W.filter}은 이 속성 대신 ${others.map((k) => `「${textOf(k)}」`).join(' · ')} 중 하나가 붙을 수 있어요\n함께 고를 수 없어요`
+    bindPageTip(c, { placement: 'below' })
+    textEl.appendChild(c)
+  }
+  /** 방금 고른 줄과 함께 붙을 수 없는 줄(삿된 짝)의 선택을 푼다 — 화면의 그 줄도 끈다. */
+  function dropSwapped(e, key, kind, line) {
+    const i = Number(key.split('|')[1])
+    for (const k of swappedKeys(e, kind, line, Number.isInteger(i) ? i : null)) {
+      if (!picked.delete(k)) continue
+      const other = detail.querySelector(`.ba-uq-row[data-key="${k}"]`)
+      if (!other) continue
+      other.classList.remove('is-on')
+      const box = other.querySelector('.ba-uq-check')
+      if (box) box.checked = false
+      for (const b of other.querySelectorAll('.ba-uq-role')) { b.classList.remove('is-on'); b.setAttribute('aria-pressed', 'false') }
+    }
   }
 
   /** 줄을 고른 상태로 만든다. 다른 고유에서 고른 것이 있으면 푼다(한 번에 고유 하나). */
@@ -388,7 +425,10 @@ export function createUniquePane(doc, { table, onChange, observe = null, game = 
       pickedUnique = k
       if (hadOther) renderList()
     }
-    if (!picked.has(key)) picked.set(key, { kind, line, role: 'and', min: '', max: '' })
+    if (!picked.has(key)) {
+      picked.set(key, { kind, line, role: 'and', min: '', max: '' })
+      dropSwapped(e, key, kind, line)
+    }
     renderListMarks()
     return picked.get(key)
   }

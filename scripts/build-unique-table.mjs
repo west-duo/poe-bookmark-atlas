@@ -104,11 +104,16 @@ export function parseUniquePage(html) {
       // PoE1: `<span class="mutatedMod"><div>문구</div><div><span class="item_description">(설명)</span></div></span> <i …>`.
       // poedb 가 「Not in game」 으로 표시한 카드는 게임에 없는 속성이라 뺀다(373장 중 9장).
       if (m[2].includes('data-bs-title="Not in game"')) continue
-      const cur = mutated.get(name) ?? { explicit: [], mutated: [], partial: true }
+      // replaces[k] — 삿된 속성 k 가 대신하는 고정 속성(그 카드의 explicitMod 칸들). 같은 속성이 여러 카드에 나오면 합친다.
+      const cur = mutated.get(name) ?? { explicit: [], mutated: [], replaces: [], partial: true }
+      const replaced = blocks(m[2], 'explicitMod')
       for (const part of m[2].split('<span class="mutatedMod">').slice(1)) {
         const body = part.split('<i data-hover=')[0]
         const mod = [...body.matchAll(/<div>([\s\S]*?)<\/div>/g)].filter((x) => !isNote(x[1])).flatMap((x) => htmlLines(x[1]))
-        if (mod.length && !cur.mutated.some((x) => x.join('\n') === mod.join('\n'))) cur.mutated.push(mod)
+        if (!mod.length) continue
+        let k = cur.mutated.findIndex((x) => x.join('\n') === mod.join('\n'))
+        if (k < 0) { k = cur.mutated.push(mod) - 1; cur.replaces.push([]) }
+        for (const b of replaced) if (!cur.replaces[k].some((x) => x.join('\n') === b.join('\n'))) cur.replaces[k].push(b)
       }
       mutated.set(name, cur)
     }
@@ -190,7 +195,12 @@ function passiveNames(game = 'poe2') {
   return names
 }
 
-const slotTitle = (text) => SLOT_TITLES.find(([re]) => re.test(text))?.[1] ?? '무작위 속성'
+const slotTitle = (text) => {
+  // 충전 자리(선도자의 상징) — 「권능 충전 속성」, 종류가 섞이면 「충전 속성」
+  const charges = new Set([...String(text).matchAll(/\b(Power|Frenzy|Endurance) Charge/gi)].map((m) => m[1].toLowerCase()))
+  if (charges.size) return charges.size === 1 ? `${CHARGE_KO[[...charges][0]]} 속성` : '충전 속성'
+  return SLOT_TITLES.find(([re]) => re.test(text))?.[1] ?? '무작위 속성'
+}
 const slotSide = (text) => (/prefix/i.test(text) ? 'p' : /suffix/i.test(text) ? 's' : null)
 
 /**
@@ -268,6 +278,72 @@ export function applyUnusedPage(entry, page, ctx) {
  * 2) 페이지에 표가 없으면 거래소 문구 규칙(RANDOM_POOLS).
  * @param {{payload?:object, page?:Array<{t:string,s?:string}>|null, indexes?:Record<string,Map<string,string[]>>, explicitIndex?:Map, pool?:Set<string>|null}} ctx
  */
+// 충전 종류가 정해진 자리 — 선도자의 상징 「[Three Power Charge mods]」(토파즈) · 「[Endurance Charge mod]」(분광 자리 셋 중 하나).
+// 개별 페이지 표는 베이스 변형 전부(루비 인내 · 사파이어 격분 · 토파즈 권능 · 분광·쌍보석 섞음)의 충전 속성 57개를 한데 싣는다 —
+// 자리에 적힌 충전만 남긴다(독립 검토 2026-11-17). 다른 충전 이름이 함께 든 줄(「최대 … 충전 상태에서」 류는 한 종류)은 뺀다.
+const CHARGE_KO = { power: '권능 충전', frenzy: '격분 충전', endurance: '인내 충전' }
+export function chargeRows(text, rows) {
+  const want = new Set([...String(text).matchAll(/\b(Power|Frenzy|Endurance) Charge/gi)].map((m) => CHARGE_KO[m[1].toLowerCase()]))
+  if (!want.size || !rows.length) return rows
+  const named = (r) => Object.values(CHARGE_KO).filter((k) => r.t.includes(k))
+  return rows.filter((r) => { const n = named(r); return n.length > 0 && n.every((k) => want.has(k)) })
+}
+
+/**
+ * PoE1 삿된 줄 — 속성마다 따로 이어 `rf`(대신하는 고정 속성 줄 번호, f 기준)를 붙인다. 화면이 「○○ 대신」을 보이고,
+ * 대신하는 고정 줄과 함께 고르지 못하게 한다(둘 다 붙은 매물은 없다 — 독립 검토 2026-11-17).
+ * 고정 줄은 문구로 찾고, 못 찾으면 조건 id 로 찾는다.
+ */
+function foulbornLines(cult, f, { explicitIndex, pool, counts }) {
+  const out = []
+  cult.mutated.forEach((mod, k) => {
+    const rf = []
+    for (const b of cult.replaces?.[k] ?? []) {
+      const text = b.join('\n')
+      let at = f.findIndex((l) => l.t === text)
+      if (at < 0) {
+        const id = linesOf([b], explicitIndex, pool, { hidden: 0 })[0]?.id
+        if (id) at = f.findIndex((l) => l.id === id)
+      }
+      if (at >= 0 && !rf.includes(at)) rf.push(at)
+    }
+    for (const l of linesOf([mod], explicitIndex, pool, counts)) out.push(rf.length ? { ...l, rf: rf.sort((a, b) => a - b) } : l)
+  })
+  return out
+}
+
+/**
+ * 개별 페이지의 베이스 변형 카드(`newItemPopup`) — 목록 페이지에는 베이스 하나만 실린 고유(선도자의 상징: 목록은 토파즈 반지뿐,
+ * 페이지에는 루비·사파이어·토파즈·분광·쌍보석 3종)를 베이스마다 싣는 데 쓴다. 이름이 그 고유인 카드만.
+ * 같은 베이스가 여럿이면(쌍보석 3종 — 거래소에서는 유형 하나로 갈리지 않는다) 모든 변형에 있는 줄만 남기고,
+ * 충전 자리는 변형들에 나온 충전 종류를 모두 담은 자리 하나로 합친다.
+ * @returns {Array<{base:string, implicit:string[][], explicit:string[][]}>}
+ */
+export function pageVariants(html, name) {
+  const byBase = new Map()
+  for (const m of String(html).matchAll(/<div class="newItemPopup[\s\S]*?(?=<div class="newItemPopup|<h5|$)/g)) {
+    const pop = m[0]
+    const nm = /<div class="itemName">\s*<span class="lc">([^<]+)<\/span>/.exec(pop)?.[1]?.trim()
+    const base = /<div class="itemName typeLine">\s*<span class="lc">([^<]+)<\/span>/.exec(pop)?.[1]?.trim()
+    if (nm !== name || !base) continue
+    const lines = (cls) => [...pop.matchAll(new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`, 'g'))]
+      .filter((x) => !x[1].trimStart().startsWith('<span class="item_description">'))
+      .map((x) => htmlLines(x[1]))
+    const list = byBase.get(base) ?? []
+    list.push({ base, implicit: lines('implicitMod'), explicit: lines('explicitMod') })
+    byBase.set(base, list)
+  }
+  return [...byBase.values()].map((vs) => {
+    if (vs.length === 1) return vs[0]
+    const key = (l) => l.join('\n')
+    const common = (k) => vs[0][k].filter((l) => vs.every((v) => v[k].some((x) => key(x) === key(l))))
+    const charges = new Set(vs.flatMap((v) => v.explicit.flatMap((l) => [...l.join(' ').matchAll(/\b(Power|Frenzy|Endurance) Charge/gi)].map((x) => x[1][0].toUpperCase() + x[1].slice(1).toLowerCase()))))
+    const explicit = common('explicit')
+    if (charges.size) explicit.push([`[${[...charges].map((c) => `${c} Charge`).join(', ')} mods]`])
+    return { base: vs[0].base, implicit: common('implicit'), explicit }
+  })
+}
+
 export function randomLine(text, ctx = {}) {
   const out = { t: text, k: 'r' }
   const n = Number((text.match(/(\d+)\s+(?:Random|Unique|Keystone)/i) ?? text.match(/Random (\d+)/i))?.[1])
@@ -279,7 +355,7 @@ export function randomLine(text, ctx = {}) {
   // 키스톤 자리(살점 도가니 — 키스톤은 페이지의 다른 탭 「Passive /33」, 「속성 부여」 표는 「less [random stat]」 줄의 풀)에는 붙이지 않는다
   // 단, poedb(PoE1) 「<영문 이름> Mods」 표는 그 고유의 속성 표 전체라 키스톤 자리에도 붙인다(군주의 가죽 「[Random Keystone]」 35개)
   const keystoneOk = /Keystone/i.test(text) && page.modsTable
-  const rows = sided ? page.filter((r) => !side || r.s === side) : /Custom|Keystone/i.test(text) && !keystoneOk ? [] : page
+  const rows = chargeRows(text, sided ? page.filter((r) => !side || r.s === side) : /Custom|Keystone/i.test(text) && !keystoneOk ? [] : page)
   if (rows.length) {
     const desecrated = /Desecrated/i.test(text)
     if (ctx.used) ctx.used.page = true
@@ -718,7 +794,20 @@ async function main() {
   const pagePools = [] // 개별 페이지에 「속성 부여」 표가 있던 고유
   const pageExtra = [] // 자리에도 변형에도 안 쓴 표 — 사람이 볼 목록
   const names = passiveNames(game) // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
+  // 목록에 베이스 하나만 실린 고유의 다른 베이스 변형 — 개별 페이지 카드에서, 거래소 고유 목록에 있는 이름·베이스만 더한다
+  const allCards = []
   for (const card of cards) {
+    allCards.push(card)
+    const slug = slugs.get(`${card.name}\u0000${card.base}`)
+    const pagePath = slug ? join(PAGES, `${slug}.html`) : null
+    if (!pagePath || !existsSync(pagePath)) continue
+    for (const v of pageVariants(readFileSync(pagePath, 'utf8'), card.name)) {
+      const k = `${card.name}\u0000${v.base}`
+      if (!tradeUniques.has(k) || cards.some((c) => c.name === card.name && c.base === v.base) || allCards.some((c) => c.name === card.name && c.base === v.base)) continue
+      allCards.push({ name: card.name, base: v.base, corrupted: card.corrupted, implicit: v.implicit, explicit: v.explicit, slug })
+    }
+  }
+  for (const card of allCards) {
     const c = classOfBase(card.base, baseMap, affixes, game)
     if (!c) noClass.add(card.base)
     if (!tradeUniques.has(`${card.name}\u0000${card.base}`)) notInTrade.push(`${card.name} (${card.base})`)
@@ -727,7 +816,7 @@ async function main() {
     if (card.corrupted) entry.x = 1
     const explicitIndex = indexes[GROUP_OF_CLASS[c] ?? EXPLICIT_GROUP]
     const cult = mutated.get(card.name)
-    const slug = slugs.get(`${card.name}\u0000${card.base}`)
+    const slug = card.slug ?? slugs.get(`${card.name}\u0000${card.base}`)
     const pagePath = slug ? join(PAGES, `${slug}.html`) : null
     PAGE = pagePath && existsSync(pagePath) ? parsePagePool(readFileSync(pagePath, 'utf8'), card.name, slug) : null
     PAGE_USED.page = false
@@ -739,7 +828,7 @@ async function main() {
     const i = linesOf(card.implicit, indexes[IMPLICIT_GROUP], pool, counts)
     PAGE = pageForExplicit
     const f = linesOf(card.explicit, explicitIndex, pool, counts)
-    const m = linesOf(cult?.mutated ?? [], explicitIndex, pool, counts)
+    const m = cult?.partial ? foulbornLines(cult, f, { explicitIndex, pool, counts }) : linesOf(cult?.mutated ?? [], explicitIndex, pool, counts)
     if (i.length) entry.i = i
     if (f.length) entry.f = f
     if (m.length) entry.m = m
