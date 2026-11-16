@@ -43,3 +43,20 @@ describe('findUniques — 이름 검색은 유형을 가리지 않는다', () =>
     expect(findUniques(table, '우물의 심장', 'Body_Armour').map((e) => e.n)).toContain('우물의 심장')
   })
 })
+
+// PoE1 표(poedb 목록, 2026-11-16) — 같은 모양이라 같은 함수가 읽는다
+import poe1 from '../src/lib/uniqueMods.poe1.json'
+describe('uniqueMods.poe1.json — PoE1 고유 표', () => {
+  it('고유 천 개 넘게 실리고, 대표 고유의 줄이 거래소 조건으로 이어진다', () => {
+    expect(poe1.u.length).toBeGreaterThan(1000)
+    const hh = poe1.u.find((e) => e.n === '헤드헌터')
+    expect(hh.c).toBe('Belt')
+    expect(hh.i.map((l) => l.id)).toEqual(['implicit.stat_3299347043'])
+    expect(hh.f.map((l) => l.id)).toContain('explicit.stat_2913235441') // 희귀 몬스터 속성 획득
+    expect(findUniques(poe1, '헤드헌터', 'Ring').map((e) => e.n)).toContain('헤드헌터')
+  })
+  it('설명문 줄(괄호로 감싼 도움말)은 싣지 않는다', () => {
+    const lines = poe1.u.flatMap((e) => [...(e.i ?? []), ...(e.f ?? [])])
+    expect(lines.filter((l) => /^\(.*\)$/s.test(l.t) && !/\d/.test(l.t.slice(1, 3)))).toEqual([])
+  })
+})

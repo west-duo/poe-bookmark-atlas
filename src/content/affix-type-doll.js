@@ -43,7 +43,6 @@ const ICON = {
   Two_Hand_Sword: 'M3 21l3-3M6 18 20 4M4 14l6 6M7 15l2 2',
   One_Hand_Axe: 'M5 20 15 10M13 6c3-2 6 0 6 3l-3 3c-2-1-3-3-3-6z',
   Two_Hand_Axe: 'M4 20 15 9M11 5c3-3 7-1 8 2l-4 4c-3-1-4-3-4-6zM15 9c3 0 5 3 4 6',
-  FishingRod: 'M4 20 18 4M18 4v12M18 16a2 2 0 1 1-2 2',
   HybridFlask: 'M10 3h4v5l4 5v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-6l4-5zM12 12v9',
   Talisman: 'M12 3l6 6-6 12-6-12zM6 9h12',
   Jewel: 'M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 8l4 2.5v3L12 16l-4-2.5v-3z',
@@ -82,7 +81,7 @@ export const DOLL_LAYOUT = {
   flask: ['LifeFlask', 'ManaFlask', 'HybridFlask', 'UtilityFlask'],
   jewel: ['Jewel'],
   // 기타 — 유물 뒤에 이 배치에 없는 새 유형이 붙는다
-  other: ['Relic', 'TowerAugmentation', 'FishingRod'],
+  other: ['Relic', 'TowerAugmentation'],
 }
 
 const NS = 'http://www.w3.org/2000/svg'

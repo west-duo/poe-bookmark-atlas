@@ -31,7 +31,8 @@ const GROUP_BY_CLASS = { Relic: SANCTUM_GROUP }
 const SKIP_FILES = new Set(['Map.json'])
 // 게임별로 더 뺄 파일 — PoE1 주얼 두 파일은 주얼 속성이 아니라 아틀라스(지도) 속성을 담고 있다(poe-game-data v2026.11.15,
 // `MapAtlas…` 모드 143개 · 접미어 0). 그대로 실으면 주얼 목록에 「에센스에 갇힌 몬스터가 …」 한 줄만 뜬다. 데이터가 고쳐지면 지운다.
-const SKIP_FILES_BY_GAME = { poe1: new Set(['Jewel.json', 'AbyssJewel.json']) }
+// 낚싯대는 속성 목록에 둘 까닭이 없다(사용자 결정 2026-11-16).
+const SKIP_FILES_BY_GAME = { poe1: new Set(['Jewel.json', 'AbyssJewel.json', 'FishingRod.json']) }
 // 거래소 한국어 목록이 로컬 능력치에 붙이는 표시(영문 「(Local)」)
 export { LOCAL_MARK } // 정본은 src/lib/modLineMatch.js
 
@@ -204,7 +205,38 @@ export function preferLadder(prev, prevInferred, next, nextInferred) {
  * 부호는 보지 않는다(negate 「#% 감소」 는 날값 −N 을 N 으로 그린다). 숫자가 없는 문장(「즉시 회복」)은 값 칸이 없어 보지 않는다.
  */
 function isUnscaled(mod) {
-  return (mod.stats ?? []).some((s) => (s.stats ?? []).some((x) => UNSCALED_STAT.test(x.stat ?? '')) || shownDiffers(s))
+  return (mod.stats ?? []).some((s) => (s.stats ?? []).some((x) => UNSCALED_STAT.test(x.stat ?? '') && !x.scaled) || shownDiffers(s))
+}
+
+// 날값을 화면 단위로 바꿔 싣는 게임. PoE1 흡수(만분율)·초당 재생(분당)은 흔한 속성이라 빼면 목록이 빈다(사용자 제보 2026-11-16).
+// 거래소 칸 단위가 화면 단위임은 PoE1 에서 실측했다(handoff 2026-11-16). PoE2 는 아직 재지 않아 종전대로 뺀다.
+const SCALE_SHOWN_GAMES = new Set(['poe1'])
+const SHOWN_DIVISOR = [[/_permyriad(_|$)/, 100], [/_(per_minute|every_minute)(_|$)/, 60]]
+
+/**
+ * 표시 배율이 이름에 드러나는 스탯(만분율 → %, 분당 → 초당)의 날값을 화면 숫자로 바꾼다(자리에서 고친다).
+ * 바꾼 값이 모드 문장(text.kr — 게임 처리기를 거친 화면 숫자)에 그대로 보일 때만 바꾸고 `scaled` 표시를 단다.
+ * 하나라도 안 맞으면 그 모드는 건드리지 않는다 — isUnscaled 가 종전대로 뺀다(틀린 값을 싣느니 안 싣는다).
+ * `mod.valueRanges` 는 문장 순서로 이어 붙인 슬롯이라(rangesByLine) 같은 순서로 다시 만든다. 처음부터 이어 붙인 모양과
+ * 다르면 손대지 않는다.
+ */
+export function scaleShownUnits(data) {
+  const round = (v) => Math.round(v * 100) / 100
+  for (const bucket of Object.values(data?.buckets ?? {})) {
+    for (const mod of [...(bucket?.prefix ?? []), ...(bucket?.suffix ?? [])]) {
+      const lines = mod.stats ?? []
+      const flat = lines.flatMap((l) => (l.stats ?? []).map((x) => x.valueRange))
+      if (JSON.stringify(flat) !== JSON.stringify(mod.valueRanges ?? [])) continue
+      const next = lines.map((l) => (l.stats ?? []).map((x) => {
+        const div = SHOWN_DIVISOR.find(([re]) => re.test(x.stat ?? ''))?.[1]
+        return div && Array.isArray(x.valueRange) ? { ...x, valueRange: x.valueRange.map((v) => round(v / div)), scaled: true } : x
+      }))
+      if (!next.some((ss) => ss.some((x) => x.scaled))) continue
+      if (lines.some((l, i) => shownDiffers({ ...l, stats: next[i] }))) continue
+      lines.forEach((l, i) => { l.stats = next[i] })
+      mod.valueRanges = next.flatMap((ss) => ss.map((x) => x.valueRange))
+    }
+  }
 }
 
 /** 한 문장의 날값 중 화면 숫자에 없는 것이 있는가 */
@@ -296,6 +328,7 @@ async function main() {
   for (const file of files) {
     const cls = file.replace('.json', '')
     const data = JSON.parse(readFileSync(join(modDir, file), 'utf8'))
+    if (SCALE_SHOWN_GAMES.has(game)) scaleShownUnits(data)
     const families = new Map()
     const classTrade = GROUP_BY_CLASS[cls] === SANCTUM_GROUP ? { index: sanctumIndex, valueless: sanctumValueless } : { index: tradeIndex, valueless }
     for (const affix of ['prefix', 'suffix']) {

@@ -607,13 +607,12 @@ describe('openAffixPopover', () => {
 
     it('PoE1 — 룬 단검은 마법 무기, 날카로운 한손 검은 한손 줄, 하이브리드 플라스크는 플라스크 영역(호신부가 없어 이름은 「플라스크」)', () => {
       const poe1 = [['Bow', '활'], ['One_Hand_Sword', '기본 한손 검'], ['Thrusting_One_Hand_Sword', '레이피어'], ['Wand', '마법봉'], ['Rune_Dagger', '룬 단검'],
-        ['LifeFlask', '생명력 플라스크'], ['HybridFlask', '하이브리드 플라스크'], ['UtilityFlask', '특수 플라스크'], ['FishingRod', '낚싯대']].map(([cls, label]) => ({ cls, label }))
+        ['LifeFlask', '생명력 플라스크'], ['HybridFlask', '하이브리드 플라스크'], ['UtilityFlask', '특수 플라스크']].map(([cls, label]) => ({ cls, label }))
       const { el } = open({ classes: poe1, currentClass: null, listForClass: () => list, game: 'poe1' })
       const subs = [...el.querySelectorAll('.is-weapon .ba-affix-doll-sub')]
       expect(subs.map((x) => [...x.querySelectorAll('.ba-affix-slot')].map((c) => c.dataset.cls)))
         .toEqual([['Bow', 'One_Hand_Sword', 'Thrusting_One_Hand_Sword'], ['Wand', 'Rune_Dagger']])
       expect(areaOf(el, 'HybridFlask')).toEqual(['is-flask'])
-      expect(areaOf(el, 'FishingRod')).toEqual(['is-other'])
       expect(el.querySelector('.is-flask .ba-affix-doll-chip').textContent).toBe('플라스크')
     })
 

@@ -567,7 +567,7 @@ function pobEnsureStyle() {
   .ba-affix-doll-sub + .ba-affix-doll-sub { margin-top: 9px; padding-top: 9px; border-top: 1px solid rgba(255,255,255,0.07); }
   .ba-affix-doll-sub > .ba-affix-doll-subchip { align-self: flex-start; }
   .ba-affix-doll-slots { display: flex; flex-wrap: wrap; gap: 5px; }
-  .is-weapon .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(3, 80px); grid-auto-rows: 52px; }
+  .is-weapon .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(3, 80px); grid-auto-rows: minmax(52px, auto); }
   .is-offhand > .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(2, 80px); grid-auto-rows: 60px; }
   /* 가운데 「방어구」 — 게임 장비창 모양. 투구·갑옷·허리띠 같은 너비, 장갑·허리띠·장화 한 줄 같은 높이,
      목걸이는 갑옷 윗선 · 반지는 갑옷 아랫선(사용자 요청 2026-09-16) */
@@ -594,11 +594,12 @@ function pobEnsureStyle() {
   .ba-affix-doll-bottom { grid-area: bottom; justify-self: center; display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-start; gap: 10px; }
   .ba-affix-doll-bottom .ba-affix-slot { min-width: 80px; height: 52px; padding: 0 10px !important; }
   .ba-affix-slot { display: flex !important; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0;
-    margin: 0 !important; padding: 0 4px !important; border: 0 !important; border-radius: 9px !important; cursor: pointer;
+    margin: 0 !important; padding: 4px !important; border: 0 !important; border-radius: 9px !important; cursor: pointer;
     background: rgba(255,255,255,0.045) !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1); color: #c9c4dc !important;
     font: 600 12.5px/1.15 system-ui, -apple-system, "Malgun Gothic", sans-serif !important;
     transition: background .15s ease, box-shadow .15s ease, color .15s ease, transform .16s cubic-bezier(0.23, 1, 0.32, 1); }
-  .ba-affix-slot span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ba-affix-slot span { max-width: 100%; overflow: hidden; text-align: center; word-break: keep-all; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .ba-affix-slot svg { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
   @media (hover: hover) and (pointer: fine) {
     .ba-affix-slot:hover { background: rgba(167,139,250,0.12) !important; box-shadow: inset 0 0 0 1px rgba(167,139,250,0.5); color: #fff !important; }
@@ -1372,9 +1373,9 @@ let uniqueTable = null
 let uniqueTableLoading = null
 function ensureUniqueTable() {
   if (uniqueTable) return uniqueTable
-  if (game !== 'poe2') return null // 고유 속성 표는 PoE2 만 있다 — PoE1 창에는 「비고유 | 고유」 전환이 없다
   if (!uniqueTableLoading) {
-    uniqueTableLoading = import('../lib/uniqueMods.poe2.json')
+    // PoE1 표는 poedb, PoE2 표는 poe2db 목록으로 만든다(scripts/build-unique-table.mjs --game)
+    uniqueTableLoading = (game === 'poe1' ? import('../lib/uniqueMods.poe1.json') : import('../lib/uniqueMods.poe2.json'))
       .then((m) => { uniqueTable = m.default })
       .catch((err) => { uniqueTableLoading = null; LOG('고유 속성 표 로드 실패', String(err)) }) // 다음에 창을 열 때 다시 받는다
   }
@@ -1431,7 +1432,7 @@ async function observeFromTrade(entry, league, key, store, firstWait) {
     const gap = nextDelay(obsGate.lastAt, Date.now(), obsGate.blockedUntil)
     if (gap.blocked) return { status: 'rate', wait: waitSeconds(gap.wait) }
     await new Promise((r) => setTimeout(r, gap.wait))
-    const got = await request(`/api/trade2/fetch/${ids.join(',')}?query=${encodeURIComponent(found.id)}`)
+    const got = await request(`/api/${game === 'poe2' ? 'trade2' : 'trade'}/fetch/${ids.join(',')}?query=${encodeURIComponent(found.id)}`)
     const pool = entry.c && affixTable?.[entry.c] ? new Set([...(affixTable[entry.c].p ?? []), ...(affixTable[entry.c].s ?? [])]) : null
     const index = indexFromStatMap(statMap, entry.c === 'Relic' ? 'sanctum' : 'explicit') // 유물 속성은 「성역」 그룹
     const data = observeListings(got?.result, entry, { index, pool, statMap })

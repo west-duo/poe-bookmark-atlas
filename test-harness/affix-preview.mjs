@@ -14,6 +14,7 @@ import poe2Table from '../src/lib/statTiers.poe2.json'
 import poe1Affixes from '../src/lib/statAffixes.poe1.json'
 import poe1Table from '../src/lib/statTiers.poe1.json'
 import poe2Uniques from '../src/lib/uniqueMods.poe2.json'
+import poe1Uniques from '../src/lib/uniqueMods.poe1.json'
 
 // 시트의 CSS 는 content-main.js 의 pobEnsureStyle 안에 있다 — 그 문자열을 그대로 꺼내 쓴다(복제하면 어긋난다).
 const css = contentMainSource.split('st.textContent = `')[1]?.split('\n  `')[0]
@@ -25,7 +26,7 @@ const params = new URLSearchParams(location.search)
 const game = params.get('game') === 'poe1' ? 'poe1' : 'poe2'
 const affixes = game === 'poe1' ? poe1Affixes : poe2Affixes
 const table = game === 'poe1' ? poe1Table : poe2Table
-const uniques = game === 'poe1' ? null : poe2Uniques
+const uniques = game === 'poe1' ? poe1Uniques : poe2Uniques
 const api = game === 'poe1' ? 'trade' : 'trade2'
 const cls = params.get('class') || 'Amulet'
 // ?mode=unique 로 고유 모드로 연다

@@ -226,6 +226,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   closeBtn.setAttribute('aria-label', '닫기')
   // 「비고유 | 고유」 — 고유는 속성이 아이템마다 정해져 있어 목록 짜임이 다르다(시안 B: 이름 목록 + 상세, 사용자 결정 2026-09-23)
   const canUnique = !!uniques && typeof onAddUnique === 'function'
+  // 바알 함양 줄은 PoE2 표에만 있다 — PoE1 안내에 「빨간 줄」 이야기를 하지 않는다
+  const hasMutated = canUnique && (uniques.u ?? []).some((e) => e?.m?.length)
   let mode = canUnique && startMode === 'unique' ? 'unique' : 'normal'
   const modeSeg = el(doc, 'div', 'ba-affix-mode')
   modeSeg.setAttribute('role', 'group')
@@ -550,8 +552,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     if (state === hintState) return
     hintState = state
     hintText.textContent = mode === 'unique'
-      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요 · 빨간 줄은 「함양된 바알 고유」도 켜요'
-        : '이름으로 찾아 고르고 값을 넣으세요 · 빨간 줄은 바알 함양 속성이에요')
+      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요' + (hasMutated ? ' · 빨간 줄은 「함양된 바알 고유」도 켜요' : '')
+        : '이름으로 찾아 고르고 값을 넣으세요' + (hasMutated ? ' · 빨간 줄은 바알 함양 속성이에요' : ''))
       : n
         ? '「넣기」를 누르면 거래소 그룹에 들어가요 · 후보 중 최소 몇 개인지는 접두어·접미어 제목 줄에서 정해요'
         : '속성을 체크하면 후보로 들어가요 · 반드시 있어야 하면 행에서 「필수」를 누르세요'
