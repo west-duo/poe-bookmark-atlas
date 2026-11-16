@@ -7,6 +7,18 @@ project: poe-bookmark-atlas
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
 
+## PoE1 주얼 베이스별 거름 — 잠금 v2026.11.17.1 (2026-11-17, 미릴리즈)
+
+- 추출기 west-duo/poe-ggpk-extractor#85(`build-all-mods-poe1.mjs basePools`) → `release:full` → west-duo/poe-game-data#47 → 태그 `v2026.11.17.1`
+  (poe-game-data `a664b89`). PoE1 Jewel·AbyssJewel·ClusterJewel 에 PoE2 와 같은 모양의 `bases`. 고유 전용(무궁한·분광 주얼)은 뺐다.
+  - 주얼: 진홍·진청록·코발트·균사체 핵 · 심연: 눈 다섯(살인적인·탐색하는·최면 거는·무시무시한·조립된) · 스킬 군: 대형·중형·소형(크기별 인챈트 태그 포함).
+  - 균사체 핵·조립된 눈 주얼은 고유 전용인지 확신이 없어 남겼다(풀이 거의 합집합이라 골라도 거의 안 걸러짐).
+- 아틀라스: 잠금만 올리고 `build-tier-table` 두 게임을 다시 만들었다 — 바뀐 것은 `statAffixes.poe1.json` 의 `b` 뿐(PoE2·티어 표 무변화).
+  `basesOf` 가 flag·manual 띠도 일반 풀 모드로 거른다(안 그러면 스킬 군 크기를 고를 때 특출 패시브 띠가 통째로 사라진다).
+  베이스별 줄 수(전체 → 베이스): 주얼 172 → 132~145 · 심연 165 → 81~165 · 스킬 군 332 → 126~157(특출 291 → 101·125·108).
+- 다른 소비처 잠금(pricer·overlay·seominugi-com)은 올리지 않았다 — 원래부터 여러 태그로 갈라져 있었다(tag 스크립트 보고).
+- 하네스(`affix.html`)는 `basesForClass` 를 넘기지 않아 베이스 칩이 안 보인다(PoE2 도 같음) — 확인은 `affixListFor` 직접 호출로 했다.
+
 ## 고유 표 PoE1 — 선도자의 상징 베이스별 풀 · 삿된 줄이 대신하는 고정 줄 (2026-11-17, 미릴리즈)
 
 - **선도자의 상징**: poedb 목록엔 토파즈 반지 카드 하나뿐이고 개별 페이지 표는 다섯 변형의 충전 속성 57개를 한데 싣는다(사용자 확인: 루비·사파이어·토파즈는

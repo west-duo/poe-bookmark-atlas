@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { verifyClassBridge, rangesByLine, hasValueConflict, preferLadder, lineTextVariants, specialAffixesOf, pruneTradeTwins, shownDiffers, LOCAL_MARK } from '../scripts/build-tier-table.mjs'
+import { verifyClassBridge, rangesByLine, hasValueConflict, preferLadder, lineTextVariants, specialAffixesOf, pruneTradeTwins, shownDiffers, LOCAL_MARK, basesOf } from '../scripts/build-tier-table.mjs'
 import { normalizeTradeText } from '../src/lib/statTextNorm.js'
 import { MOD_FILE_BY_POB_CLASS } from '../src/lib/itemClass.js'
 
@@ -256,5 +256,13 @@ describe('shownDiffers — 날값이 화면 문장에 그대로 보이지 않는
     expect(shownDiffers(line('플레이어의 플라스크 충전량 (30-35)% 감소', [-35, -30]))).toBe(false)
     expect(shownDiffers(line('생명력 최대치 100당 화염 가시 피해 2~4', [2, 2], [4, 4]))).toBe(false)
     expect(shownDiffers(line('즉시 회복', [1, 1]))).toBe(false)
+  })
+})
+
+describe('basesOf — 베이스별 거름', () => {
+  it('수치 없는 속성(flag)·값 직접 입력(manual) 띠도 일반 풀(normal)의 베이스별 모드로 거른다 — PoE1 스킬 군 주얼 크기', () => {
+    const data = { bases: [{ id: 'Large', name: { kr: '대형 스킬 군 주얼' }, pools: { normal: { prefix: ['NotableA', 'LifeL'], suffix: [] } } }] }
+    const poolMods = { n: { 'stat.life': ['LifeL', 'LifeS'] }, flag: { 'stat.notable_a': ['NotableA'], 'stat.notable_b': ['NotableB'] }, manual: { 'stat.str': ['StrS'] } }
+    expect(basesOf(data, poolMods)).toEqual([{ id: 'Large', n: '대형 스킬 군 주얼', k: { n: ['stat.life'], flag: ['stat.notable_a'] } }])
   })
 })
