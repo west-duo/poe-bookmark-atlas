@@ -129,6 +129,7 @@ export const POE1_MOD_FILE_BY_CATEGORY = {
   'accessory.ring': 'Ring',
   'jewel.base': 'Jewel',
   'jewel.abyss': 'AbyssJewel',
+  'jewel.cluster': 'ClusterJewel',
 }
 
 /** PoE1 pobBaseMap 클래스명 → modifiers 파일명. PoE2 와 이름이 같아도 짝이 다른 것(Charms)이 있어 표를 따로 둔다. */
@@ -210,6 +211,8 @@ export function classFromCategory(option, game) {
 export function classFromBaseName(name, baseMap, game) {
   if (!name || !baseMap) return null
   const entry = own(baseMap, String(name))
+  // PoE1 스킬 군 주얼 세 베이스는 PoB 클래스가 일반 주얼(Jewels)이다 — 영문 이름으로 가른다(속성 풀이 전혀 다르다)
+  if (game === 'poe1' && Array.isArray(entry) && / Cluster Jewel$/.test(entry[0] ?? '')) return 'ClusterJewel'
   const pobClass = Array.isArray(entry) ? entry[1] : null
   return pobClass ? own(classTables(game).byPobClass, pobClass) : null
 }

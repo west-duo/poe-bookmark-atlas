@@ -1,6 +1,7 @@
 // 고유 아이템 속성 표 생성 — 고유 아이템마다 붙는 속성(고정·기본·바알 함양)과 거래소 조건 id 를 잇는다.
 //
-// 실행: node scripts/build-unique-table.mjs [--fetch-pages] [--list <html>] [--stats <json>] [--items <json>] [--min-match 85]
+// 실행: node scripts/build-unique-table.mjs [--game poe2|poe1] [--fetch-pages] [--list <html>] [--stats <json>] [--items <json>] [--min-match 85]
+//   PoE1 은 같은 저자의 poedb.tw(kr) 목록을 읽는다(사용자 결정 2026-11-16) — 카드 마크업이 poe2db 와 같다. 캐시 scripts/.cache/poedb/
 //
 // 왜 poe2db 인가: 게임 파일(GGPK)에는 고유 전용 속성의 정의(문구·범위)는 있지만 **어느 고유에 붙는지 잇는 정보가 없다**
 // (2026-09-23 전수 확인 — Mods 를 가리키는 PoE2 표 68개·컬럼 103개, 스키마 밖 표 15개, Mods 행 폭 693바이트 일치,
@@ -39,6 +40,10 @@ const SKILL_GROUP = '스킬'
 const DESECRATED_GROUP = '훼손된'
 const CULTIVATED_HEAD = '<h5 class="card-header">Cultivated Uniques'
 
+// 게임별 출처 — 사이트(목록·개별 페이지)와 거래소 경로
+const SITE = { poe2: { dir: 'poe2db', host: 'https://poe2db.tw' }, poe1: { dir: 'poedb', host: 'https://poedb.tw' } }
+const BASE_MAP_FILE = { poe2: 'pobBaseMap.json', poe1: 'pobBaseMap.poe1.json' }
+
 const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ' }
 
 /**
@@ -67,7 +72,11 @@ export function parseUniquePage(html) {
   const main = cut >= 0 ? html.slice(0, cut) : html
   const cards = []
   const cardRe = /<span class="uniqueName">([^<]+)<\/span>\s*<span class="uniqueTypeLine">([^<]+)<\/span><\/a>([\s\S]*?)(?=<div class="col">|$)/g
-  const blocks = (body, cls) => [...body.matchAll(new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`, 'g'))].map((m) => htmlLines(m[1]))
+  // 설명문 칸(poedb PoE1: `<span class="item_description">("최근"은 지난 4초 동안을 의미합니다)</span>`)은 속성이 아니라 뺀다 —
+  // PoE1 목록에서 못 이은 줄 1,233개 중 대부분이 이것이었다(2026-11-16). poe2db 목록에는 이 표시가 없다.
+  const blocks = (body, cls) => [...body.matchAll(new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`, 'g'))]
+    .filter((m) => !m[1].trimStart().startsWith('<span class="item_description">'))
+    .map((m) => htmlLines(m[1]))
   for (const m of main.matchAll(cardRe)) {
     cards.push({ name: m[1].trim(), base: m[2].trim(), corrupted: m[3].includes('<div class="corrupted">'), implicit: blocks(m[3], 'implicitMod'), explicit: blocks(m[3], 'explicitMod') })
   }
@@ -141,11 +150,11 @@ export function koreanizePoolNames(u, names) {
  * 판 체크아웃을 못 찾거나(판이 lock 과 다름 포함) 파일이 없으면 **멈춘다** — 다른 빌드 스크립트와 같다. 예전에는 빈 맵으로 넘어갔는데,
  * 매물 관찰의 키스톤 대조(`observedId`)가 이 이름에 기대게 된 뒤(2026-11-16)로는 빈 맵이면 살점 도가니 풀이 조용히 빈다(독립 검토).
  */
-function passiveNames() {
+function passiveNames(game = 'poe2') {
   const root = resolveLockedGameDataRoot({ startDir: here })
-  const f = join(root, 'poe2', 'passives.json')
+  const f = join(root, game, 'passives.json')
   if (!existsSync(f)) {
-    throw new Error(`패시브 이름: lock 판 ${DATA_LOCK.snapshot} 에 poe2/passives.json 이 없습니다 (${f})`)
+    throw new Error(`패시브 이름: lock 판 ${DATA_LOCK.snapshot} 에 ${game}/passives.json 이 없습니다 (${f})`)
   }
   const names = new Map()
   for (const row of JSON.parse(readFileSync(f, 'utf8')).passives ?? []) {
@@ -370,8 +379,8 @@ export function linesOf(blocks, index, pool, counts) {
  * 베이스 이름 → 유형. PoB 베이스 대응표에 없는 유물·서판은 속성 표가 들고 있는 베이스 목록(`b`)으로 찾는다.
  * @returns {string|null} modifiers 파일명
  */
-export function classOfBase(base, baseMap, affixes) {
-  const c = classFromBaseName(base, baseMap)
+export function classOfBase(base, baseMap, affixes, game) {
+  const c = classFromBaseName(base, baseMap, game)
   if (c) return c
   for (const [cls, v] of Object.entries(affixes ?? {})) if (Array.isArray(v?.b) && v.b.some((b) => b?.n === base)) return cls
   return null
@@ -589,7 +598,8 @@ export function uniqueSlugs(html) {
   return out
 }
 
-const PAGES = join(CACHE, 'poe2db', 'pages')
+let PAGES = join(CACHE, SITE.poe2.dir, 'pages') // main 이 게임에 맞춰 바꾼다
+let SITE_HOST = SITE.poe2.host
 /**
  * 고유 개별 페이지를 받아 캐시한다(사용자 결정 2026-09-25 — 전수 점검). **개발 빌드 때만**, 없는 것만, 천천히 받는다.
  * 확장은 poe2db 에 요청하지 않는다.
@@ -597,10 +607,10 @@ const PAGES = join(CACHE, 'poe2db', 'pages')
 async function fetchPages(slugs, { delayMs = 1500 } = {}) {
   mkdirSync(PAGES, { recursive: true })
   const todo = [...new Set(slugs.values())].filter((s) => !existsSync(join(PAGES, `${s}.html`)))
-  console.log(`poe2db 개별 페이지: 받을 것 ${todo.length}개 (캐시 ${slugs.size - todo.length}개)`)
+  console.log(`${SITE_HOST} 개별 페이지: 받을 것 ${todo.length}개 (캐시 ${slugs.size - todo.length}개)`)
   for (const [i, slug] of todo.entries()) {
     // 목록의 href 는 이미 퍼센트 인코딩돼 있다(`Mj%C3%B6lner`) — 다시 인코딩하면 404
-    const res = await fetch(`https://poe2db.tw/kr/${slug.includes('%') ? slug : encodeURIComponent(slug)}`, { headers: { 'User-Agent': 'Mozilla/5.0 (poe-bookmark-atlas dev build)' } })
+    const res = await fetch(`${SITE_HOST}/kr/${slug.includes('%') ? slug : encodeURIComponent(slug)}`, { headers: { 'User-Agent': 'Mozilla/5.0 (poe-bookmark-atlas dev build)' } })
     if (!res.ok) { console.log(`  ⚠ ${slug}: ${res.status}`); if (res.status === 429) break; continue }
     writeFileSync(join(PAGES, `${slug}.html`), await res.text(), 'utf8')
     if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${todo.length}`)
@@ -608,11 +618,11 @@ async function fetchPages(slugs, { delayMs = 1500 } = {}) {
   }
 }
 
-async function loadItems(itemsPath) {
+async function loadItems(itemsPath, game = 'poe2') {
   if (itemsPath) return JSON.parse(readFileSync(itemsPath, 'utf8'))
-  const cache = join(CACHE, 'poe2-items.json')
+  const cache = join(CACHE, `${game}-items.json`)
   if (existsSync(cache)) return JSON.parse(readFileSync(cache, 'utf8'))
-  const url = 'https://poe.kakaogames.com/api/trade2/data/items'
+  const url = `https://poe.kakaogames.com/api/${game === 'poe2' ? 'trade2' : 'trade'}/data/items`
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })
   if (!res.ok) throw new Error(`거래소 아이템 목록을 받지 못했습니다: ${res.status} ${url}`)
   const json = await res.json()
@@ -624,11 +634,15 @@ async function loadItems(itemsPath) {
 async function main() {
   const argv = process.argv.slice(2)
   const arg = (name, fallback) => { const i = argv.indexOf(name); return i >= 0 ? argv[i + 1] : fallback }
-  const listPath = arg('--list', join(CACHE, 'poe2db', 'unique-item.kr.html'))
+  const game = arg('--game', 'poe2')
+  if (!SITE[game]) { console.error(`모르는 게임: ${game}`); process.exit(1) }
+  PAGES = join(CACHE, SITE[game].dir, 'pages')
+  SITE_HOST = SITE[game].host
+  const listPath = arg('--list', join(CACHE, SITE[game].dir, 'unique-item.kr.html'))
   const minMatch = Number(arg('--min-match', '85'))
   if (!Number.isFinite(minMatch)) { console.error(`--min-match 값이 숫자가 아닙니다: ${arg('--min-match', '')}`); process.exit(1) }
   if (!existsSync(listPath)) {
-    console.error(`고유 목록 HTML 이 없습니다: ${listPath}\n  poe2db 「Unique_item」(kr) 페이지를 브라우저로 저장해 이 경로에 두세요.`)
+    console.error(`고유 목록 HTML 이 없습니다: ${listPath}\n  ${SITE_HOST}/kr/Unique_item 페이지를 저장해 이 경로에 두세요.`)
     process.exit(1)
   }
 
@@ -636,17 +650,17 @@ async function main() {
   const { cards, mutated } = parseUniquePage(listHtml)
   const slugs = uniqueSlugs(listHtml)
   if (argv.includes('--fetch-pages')) await fetchPages(slugs)
-  const statsPayload = await loadStats('poe2', arg('--stats', null))
+  const statsPayload = await loadStats(game, arg('--stats', null))
   const indexes = tradeIndexes(statsPayload)
   STATS = { payload: statsPayload, skill: indexes[SKILL_GROUP], indexes }
-  const items = await loadItems(arg('--items', null))
-  const affixes = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', 'statAffixes.poe2.json'), 'utf8'))
-  const baseMap = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', 'pobBaseMap.json'), 'utf8'))
+  const items = await loadItems(arg('--items', null), game)
+  const affixes = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', `statAffixes.${game}.json`), 'utf8'))
+  const baseMap = JSON.parse(readFileSync(join(here, '..', 'src', 'lib', BASE_MAP_FILE[game]), 'utf8'))
   const tradeUniques = new Set()
   for (const g of items.result ?? []) for (const e of g.entries ?? []) if (e.flags?.unique && e.name) tradeUniques.add(`${e.name}\u0000${e.type}`)
   // 매물 관찰(있으면) — 형제 가족을 가릴 때 비고유 속성 풀은 빼야 한다(「화염 저항」↔「냉기 저항」은 고유의 무작위가 아니다)
   // 저장소에 싣는다(scripts/data/) — 캐시에 두면 다음 빌드가 이 개선을 조용히 잃는다
-  const observedPath = join(here, 'data', 'observed-poe2.json')
+  const observedPath = join(here, 'data', `observed-${game}.json`)
   const observed = existsSync(observedPath) ? JSON.parse(readFileSync(observedPath, 'utf8')) : null
   const allEntries = (statsPayload.result ?? []).flatMap((g) => g.entries ?? []).filter((e) => typeof e?.id === 'string' && typeof e.text === 'string')
   const regular = new Set()
@@ -660,9 +674,9 @@ async function main() {
   const mfDiffers = []
   const pagePools = [] // 개별 페이지에 「속성 부여」 표가 있던 고유
   const pageExtra = [] // 자리에도 변형에도 안 쓴 표 — 사람이 볼 목록
-  const names = passiveNames() // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
+  const names = passiveNames(game) // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
   for (const card of cards) {
-    const c = classOfBase(card.base, baseMap, affixes)
+    const c = classOfBase(card.base, baseMap, affixes, game)
     if (!c) noClass.add(card.base)
     if (!tradeUniques.has(`${card.name}\u0000${card.base}`)) notInTrade.push(`${card.name} (${card.base})`)
     const pool = poolOf(affixes, c)
@@ -708,7 +722,7 @@ async function main() {
     return { lines: lines.length, one, alt, none: lines.length - one - alt, withValue, rate: lines.length ? (one + alt) / lines.length * 100 : 100 }
   }
   const sf = stat('f'), sm = stat('m'), si = stat('i')
-  const out = join(here, '..', 'src', 'lib', 'uniqueMods.poe2.json')
+  const out = join(here, '..', 'src', 'lib', `uniqueMods.${game}.json`)
   const body = JSON.stringify({ u })
   writeFileSync(out, body + '\n', 'utf8')
 

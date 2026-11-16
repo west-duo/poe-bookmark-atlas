@@ -133,11 +133,19 @@ const DEFAULT_ROLE = 'or'
  * 장비 3 · 주얼 2 · 플라스크·호신부 1.
  */
 export function affixLimitOf(cls) {
-  if (cls === 'Jewel') return 2
+  if (cls === 'Jewel' || cls === 'AbyssJewel' || cls === 'ClusterJewel') return 2
   if (cls === 'LifeFlask' || cls === 'ManaFlask' || cls === 'HybridFlask' || cls === 'UtilityFlask') return 1
   return 3
 }
 const SOURCE_LABEL = { prefix: '접두', suffix: '접미', corrupted: '타락' }
+// 값을 열어 둔 줄 — 띠마다 뜻이 다르다(스킬 부여: 레벨 · 수치 없는 속성: 넣을 값 없음 · 값 직접 입력: 베이스마다 값이 달라 티어 없음)
+const OPEN_TEXT = {
+  skill: ['레벨 직접 입력', '레벨은 거래소 칸에 직접 넣어요'],
+  flag: ['수치 없음', '붙어 있기만 하면 걸려요 — 넣을 값이 없어요'],
+  manual: ['값 직접 입력', '베이스마다 수치가 달라 티어를 정하지 않았어요 — 값은 거래소 칸에 직접 넣어요'],
+}
+const openLabel = (item) => (OPEN_TEXT[item.pool] ?? OPEN_TEXT.skill)[0]
+const openTip = (item) => (OPEN_TEXT[item.pool] ?? OPEN_TEXT.skill)[1]
 // 서판 — 남은 사용 횟수는 거래소 「유사」 조건 하나로 종류와 상관없이 걸린다(「사용 횟수 #회 남음(서판)」, 2026-09-23 목록 확인).
 // 서판 8종 모두 새것은 10회(게임 데이터 implicits 「잔여 사용 횟수 10회」).
 const TABLET_CLASS = 'TowerAugmentation'
@@ -226,6 +234,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   closeBtn.setAttribute('aria-label', '닫기')
   // 「비고유 | 고유」 — 고유는 속성이 아이템마다 정해져 있어 목록 짜임이 다르다(시안 B: 이름 목록 + 상세, 사용자 결정 2026-09-23)
   const canUnique = !!uniques && typeof onAddUnique === 'function'
+  // 바알 함양 줄은 PoE2 표에만 있다 — PoE1 안내에 「빨간 줄」 이야기를 하지 않는다
+  const hasMutated = canUnique && (uniques.u ?? []).some((e) => e?.m?.length)
   let mode = canUnique && startMode === 'unique' ? 'unique' : 'normal'
   const modeSeg = el(doc, 'div', 'ba-affix-mode')
   modeSeg.setAttribute('role', 'group')
@@ -371,11 +381,12 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
    * 「모두 한 그룹」 방식은 두지 않는다 — 요청이 오면 그때 설정으로 연다(사용자 결정 2026-09-16).
    */
   // 스킬 부여도 따로 한 그룹이다 — 타락 후보와 한 개수 그룹에 섞이면 「둘 중 하나」가 돼 뜻이 바뀐다(독립 검토 2026-09-17).
-  const OWN_OR_SOURCES = new Set(['prefix', 'suffix', 'skill'])
+  // 수치 없는 속성(flag)·값 직접 입력(manual) 띠도 각자 그룹이다 — 스킬 군 주얼 특출 패시브는 한 아이템에 여럿 붙는다(독립 검토 2026-11-16)
+  const OWN_OR_SOURCES = new Set(['prefix', 'suffix', 'skill', 'flag', 'manual'])
   const orGroupOf = (p) => (p.role === 'or' && OWN_OR_SOURCES.has(p.item.source) ? `or:${p.item.source}` : p.role)
   const orMinPicked = new Map() // 그룹 키 → 사용자가 고른 최소 개수(없으면 1)
   // 접두·접미가 없는 OR(타락)은 따로 한 그룹이다 — 이름은 그 그룹이 전부 타락일 때만 붙인다
-  const OR_GROUP_LABEL = { 'or:prefix': '접두어', 'or:suffix': '접미어', 'or:skill': '스킬 부여' }
+  const OR_GROUP_LABEL = { 'or:prefix': '접두어', 'or:suffix': '접미어', 'or:skill': '스킬 부여', 'or:flag': '수치 없는 속성', 'or:manual': '값 직접 입력' }
   const orLabel = (g) => OR_GROUP_LABEL[g]
     ?? ([...selected.values()].filter((p) => orGroupOf(p) === 'or').every((p) => p.item.source === 'corrupted') ? '타락' : '')
   /**
@@ -389,7 +400,9 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
       if (!g.startsWith('or')) continue
       const e = out.get(g) ?? { count: 0, limit: 1 }
       e.count++
-      if (g === 'or:prefix' || g === 'or:suffix') e.limit = Math.max(e.limit, affixLimitOf(p.cls)) // 타락·스킬 부여는 한 아이템에 하나
+      // 타락·스킬 부여는 한 아이템에 하나. 수치 없는·값 직접 입력 띠는 접두·접미에 걸쳐 있어 접두+접미 한도까지
+      if (g === 'or:prefix' || g === 'or:suffix') e.limit = Math.max(e.limit, affixLimitOf(p.cls))
+      if (g === 'or:flag' || g === 'or:manual') e.limit = Math.max(e.limit, affixLimitOf(p.cls) * 2)
       out.set(g, e)
     }
     for (const e of out.values()) e.max = Math.max(1, Math.min(e.count, e.limit))
@@ -550,8 +563,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     if (state === hintState) return
     hintState = state
     hintText.textContent = mode === 'unique'
-      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요 · 빨간 줄은 「함양된 바알 고유」도 켜요'
-        : '이름으로 찾아 고르고 값을 넣으세요 · 빨간 줄은 바알 함양 속성이에요')
+      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요' + (hasMutated ? ' · 빨간 줄은 「함양된 바알 고유」도 켜요' : '')
+        : '이름으로 찾아 고르고 값을 넣으세요' + (hasMutated ? ' · 빨간 줄은 바알 함양 속성이에요' : ''))
       : n
         ? '「넣기」를 누르면 거래소 그룹에 들어가요 · 후보 중 최소 몇 개인지는 접두어·접미어 제목 줄에서 정해요'
         : '속성을 체크하면 후보로 들어가요 · 반드시 있어야 하면 행에서 「필수」를 누르세요'
@@ -998,7 +1011,7 @@ export function tierWidthOf(items) {
       const label = byRange ? String(c.range).replace(/ 평균$/, '') : `T${c.t}`
       w += Math.max(26, label.length * 6.6 + 12) + 1
     }
-    if (!(item.choices ?? []).length) w = item.open ? 84 : 56 // 「레벨 직접 입력」 · 「레벨 부족」
+    if (!(item.choices ?? []).length) w = item.open ? 84 : 56 // 「레벨 직접 입력」(openLabel) · 「레벨 부족」
     max = Math.max(max, w)
   }
   return Math.ceil(max)
@@ -1022,8 +1035,7 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
     name.append(' ', tag)
   }
   // 툴팁은 전부 우리 것(page-tip.js) — 네이티브 title 을 쓰지 않는다(사용자 결정 2026-09-16)
-  name.dataset.tip = item.open ? `${item.text}
-레벨은 거래소 칸에 직접 넣어요` : item.single ? `${item.text}\n값 범위 하나` : `${item.text}\n티어 ${item.tiers}개 · 최고 티어 필요 아이템 레벨 ${item.topLevel}`
+  name.dataset.tip = item.open ? `${item.text}\n${openTip(item)}` : item.single ? `${item.text}\n값 범위 하나` : `${item.text}\n티어 ${item.tiers}개 · 최고 티어 필요 아이템 레벨 ${item.topLevel}`
   bindPageTip(name, { placement: 'below' })
   const r = { item, row, box, pills: [], roles: [] }
   const current = () => {
@@ -1075,7 +1087,7 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
     }
     const tierBox = el(doc, 'span', 'ba-affix-tierbox')
     controls.appendChild(tierBox)
-    if (!item.choices.length) tierBox.appendChild(el(doc, 'span', 'ba-affix-have', item.open ? '레벨 직접 입력' : '레벨 부족'))
+    if (!item.choices.length) tierBox.appendChild(el(doc, 'span', 'ba-affix-have', item.open ? openLabel(item) : '레벨 부족'))
     else {
       const seg = el(doc, 'span', 'ba-affix-tiers')
       item.choices.forEach((c, i) => {

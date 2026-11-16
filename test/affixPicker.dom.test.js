@@ -607,13 +607,12 @@ describe('openAffixPopover', () => {
 
     it('PoE1 — 룬 단검은 마법 무기, 날카로운 한손 검은 한손 줄, 하이브리드 플라스크는 플라스크 영역(호신부가 없어 이름은 「플라스크」)', () => {
       const poe1 = [['Bow', '활'], ['One_Hand_Sword', '기본 한손 검'], ['Thrusting_One_Hand_Sword', '레이피어'], ['Wand', '마법봉'], ['Rune_Dagger', '룬 단검'],
-        ['LifeFlask', '생명력 플라스크'], ['HybridFlask', '하이브리드 플라스크'], ['UtilityFlask', '특수 플라스크'], ['FishingRod', '낚싯대']].map(([cls, label]) => ({ cls, label }))
+        ['LifeFlask', '생명력 플라스크'], ['HybridFlask', '하이브리드 플라스크'], ['UtilityFlask', '특수 플라스크']].map(([cls, label]) => ({ cls, label }))
       const { el } = open({ classes: poe1, currentClass: null, listForClass: () => list, game: 'poe1' })
       const subs = [...el.querySelectorAll('.is-weapon .ba-affix-doll-sub')]
       expect(subs.map((x) => [...x.querySelectorAll('.ba-affix-slot')].map((c) => c.dataset.cls)))
         .toEqual([['Bow', 'One_Hand_Sword', 'Thrusting_One_Hand_Sword'], ['Wand', 'Rune_Dagger']])
       expect(areaOf(el, 'HybridFlask')).toEqual(['is-flask'])
-      expect(areaOf(el, 'FishingRod')).toEqual(['is-other'])
       expect(el.querySelector('.is-flask .ba-affix-doll-chip').textContent).toBe('플라스크')
     })
 
@@ -835,5 +834,34 @@ describe('openAffixPopover', () => {
     expect(el.textContent).toContain('아이템 유형을 먼저 고르면')
     expect(el.querySelector('.ba-affix-add').disabled).toBe(true)
     expect(el.querySelector('.ba-affix-search-input').disabled).toBe(true)
+  })
+})
+
+// PoE1 스킬 군 주얼 — 수치 없는 속성(특출 패시브)·값 직접 입력 띠는 각자 개수 그룹이고, 줄 문구가 띠마다 다르다(독립 검토 2026-11-16)
+import { affixListFor as listForPoe1 } from '../src/lib/affixList.js'
+import poe1Table from '../src/lib/statTiers.poe1.json'
+import poe1Affixes from '../src/lib/statAffixes.poe1.json'
+describe('PoE1 스킬 군 주얼 — 열린 띠', () => {
+  it('특출 패시브 둘을 후보로 넣으면 or:flag 개수 그룹, 줄에는 「수치 없음」', async () => {
+    const g = statGroup('숫자', [])
+    document.body.appendChild(g)
+    attachAffixButtons(document, { onOpen: () => {} })
+    const statMap = {}
+    for (const m of poe1Affixes.ClusterJewel.m) for (const id of Object.keys(m.x)) statMap[id] = id
+    const list = listForPoe1({ table: poe1Table, affixes: poe1Affixes, itemClass: 'ClusterJewel', statMap })
+    const onAdd = vi.fn()
+    const { el } = openAffixPopover({ anchor: g.querySelector('.' + AFFIX_BTN_CLASS), title: 't', subtitle: 's', list, currentClass: 'ClusterJewel', onAdd, game: 'poe1' })
+    const band = el.querySelector('.ba-affix-band[data-pool="flag"]')
+    band.querySelector('.ba-affix-band-head').click()
+    expect(band.querySelector('.ba-affix-have').textContent).toBe('수치 없음')
+    const checks = band.querySelectorAll('.ba-affix-check')
+    checks[0].click(); checks[1].click()
+    const manual = el.querySelector('.ba-affix-band[data-pool="manual"]')
+    manual.querySelector('.ba-affix-band-head').click()
+    expect(manual.querySelector('.ba-affix-have').textContent).toBe('값 직접 입력')
+    el.querySelector('.ba-affix-add').click()
+    await Promise.resolve(); await Promise.resolve()
+    expect(onAdd.mock.calls[0][0].map((p) => p.role)).toEqual(['or:flag', 'or:flag'])
+    expect(onAdd.mock.calls[0][1].orMin).toEqual({ 'or:flag': 1 })
   })
 })

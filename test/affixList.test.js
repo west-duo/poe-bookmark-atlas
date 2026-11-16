@@ -273,9 +273,20 @@ describe('실제 데이터 PoE1 — statAffixes.poe1 와 statTiers.poe1 이 같�
     }
   })
 
-  it('주얼은 싣지 않는다 — poe-game-data 의 PoE1 주얼 파일이 아틀라스 속성을 담고 있다', () => {
-    expect(poe1Affixes.Jewel).toBeUndefined()
-    expect(poe1Affixes.AbyssJewel).toBeUndefined()
+  // v2026.11.15 까지는 PoE1 주얼 파일에 아틀라스 속성이 들어 있어 뺐다 — v2026.11.16 에서 추출기 도메인 번호가 고쳐졌다
+  it('주얼 3종이 주얼 속성으로 실린다(아틀라스 속성이 섞이지 않는다)', () => {
+    const textOf = (id) => id // id 만 본다 — 아틀라스 모드는 「지도·지역」 문구라 거래소 비고정 id 로 이어지지 않는다
+    for (const c of ['Jewel', 'AbyssJewel']) expect([...poe1Affixes[c].p, ...poe1Affixes[c].s].length).toBeGreaterThan(100)
+    expect(poe1Affixes.Jewel.p.map(textOf)).toContain('explicit.stat_983749596') // 생명력 최대치 #% 증가
+    const flag = poe1Affixes.ClusterJewel.m.find((m) => m.key === 'flag')
+    expect(Object.keys(flag.x).length).toBeGreaterThan(200) // 특출 패시브 「○○ 패시브 스킬 1개 추가」
+    expect(Object.values(flag.x).every((v) => v.o === 1)).toBe(true)
+    expect(poe1Affixes.FishingRod).toBeUndefined()
+  })
+
+  it('영향력 6종 띠가 게임 표기 이름으로 실린다', () => {
+    expect(poe1Affixes.Gloves.m.map((m) => m.n)).toEqual(expect.arrayContaining(['쉐이퍼 아이템', '엘더 아이템', '십자군 아이템', '대속자 아이템', '사냥꾼 아이템', '전쟁군주 아이템']))
+    expect(Object.keys(poe1Affixes.Gloves.e ?? {}).length).toBeGreaterThan(10) // 에센스
   })
 
   it('타락 속성은 고정(implicit) 조건이다 — PoE1 인챈트는 연구소 인챈트라 다른 것', () => {
