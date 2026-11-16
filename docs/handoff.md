@@ -1,11 +1,32 @@
 ---
-timestamp: 2026-11-16 (Asia/Seoul)
+timestamp: 2026-11-17 (Asia/Seoul)
 project: poe-bookmark-atlas
 ---
 
 # poe-bookmark-atlas 핸드오프
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
+
+## 속성 목록 PoE1 3차 — 삿된 고유 · 고유 무작위 풀 · 띠별 접두·접미 · 40개 상한 (2026-11-17, 미릴리즈)
+
+- **삿된(Foulborn) 고유**: poedb 목록의 「Foulborn 고유 아이템 /373」 구역은 카드 하나가 (바뀌는 고정 속성 하나 → 삿된 속성 하나) 짝이다.
+  같은 고유가 여러 장(최대 4)이라 고유마다 삿된 속성을 모아 `m` 으로 싣는다(250개 고유 · 377줄 · 연결 93.9%). 카드의 고정 속성은 그 카드에서
+  바뀌는 한 줄뿐이라 `mf` 로 싣지 않는다. poedb 「Not in game」 카드 9장은 뺀다.
+  - 거래소 기타 필터는 PoE1 도 **`misc_filters.mutated`(옵션 `true`), 게임 표기 「삿된 아이템」**(2026-11-17 카카오 `/api/trade/data/filters` 실측).
+    거래소 고유 이름에는 「삿된」 접두가 없다(`/data/items` 1,557개 중 0) — 이름 + 기타 필터로 찾는 PoE2 함양과 같은 길.
+  - 화면 말은 `src/lib/mutationWords.js` 하나에서 게임별로: PoE1 배지 「삿된」(이름 틀 「삿된 {0}」) · 절 「삿된 속성 — …」 · 필터 「삿된 아이템」. 오브 그림은 PoE2 만.
+- **고유 무작위 풀(PoE1)**: 무작위 자리 23개 고유의 poedb 개별 페이지만 받아(`scripts/.cache/poedb/pages/`, 3초 간격, 1회성 스크립트 — 전체 `--fetch-pages` 는 1,242쪽이라 안 돌림)
+  21개 고유의 풀을 채웠다(풀 속성 710개 중 703 연결). 스크립트 보강: 「<영문 이름> Mods /N」 표(slug 와 글자 대조, 열 머리로 이름 칸 선택) ·
+  표 하나에서 끊기(버전 기록이 이어 붙음) · `[Six Linked]` 숨김(키스톤 풀을 가로챘다) · Mods 표는 키스톤 자리에도. **PoE2 산출물 바이트 동일**(develop 스크립트와 비교).
+  - 남은 것: 툼피스트 「[2 random Abyss Jewel-dependent modifiers]」(페이지 표가 다른 고유 「공포의 균형」 것) · 못 이은 풀 줄 7개(선도자의 상징 「최대 … 충전 상태에서」 4 등).
+- **띠마다 접두·접미가 다른 같은 조건(36건)**: 후보 개수 그룹을 마지막에 누른 줄이 아니라 **목록에서 먼저 나오는(출처 있는) 줄**로 고정(`affix-picker.js sideOf`).
+  기본 띠가 먼저라 보통 일반 풀의 접두·접미를 따른다. 「같은 조건」 칩 툴팁에 한 줄 적었다.
+- **40개 상한**: `stat-adder.js` 가 넘친 것을 `skipped`(reason `limit`)로 돌려주고 알림이 「한 번에 넣을 수 있는 수를 넘어 N개는 넣지 못했어요」.
+- **주얼 베이스별 거름(조사만)**: poe-game-data PoE1 `modifiers/json/*.json` 에는 `bases` 가 아예 없다(Jewel·AbyssJewel·ClusterJewel 포함). PoE2 추출기
+  (`poe-ggpk-extractor/build-all-mods.mjs` `BASE_POOL_CLASS`·`basePools`)는 주얼에 베이스별 `pools` 를 싣고, PoE1 추출기(`build-all-mods-poe1.mjs`)는
+  이미 베이스별 태그 집합(`baseTagSets`)으로 판정만 하고 결과는 합집합 한 벌만 낸다 — `basePools` 를 옮겨 Jewel·AbyssJewel·ClusterJewel 에 `bases` 를 실으면
+  아틀라스는 `build-tier-table.mjs basesOf` 가 그대로 받는다(미검증). 추출기 작업이라 이번 범위 밖.
+- 라이브: 카카오 PoE1 로그인 화면에서 끝까지 눌러 보지는 못했다(하네스 `affix.html?game=poe1&mode=unique` 로 헤드헌터 삿된 줄 → 넣기 `mutated: true` 확인).
 
 ## 고유 표 재생성 — 거래소 키스톤 선택지 한글화 대응 (2026-11-16, 미릴리즈)
 

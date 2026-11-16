@@ -235,6 +235,8 @@
       }
 
       const options = home.availableOptionsFlat || {}
+      // 한 번에 넣는 개수 상한 — 넘는 것은 조용히 버리지 않고 알린다(알림에 「넣지 못한 N개」로 나온다)
+      for (const item of d.items.slice(MAX_ITEMS)) skipped.push({ id: String(item && item.id), reason: 'limit' })
       for (const item of d.items.slice(0, MAX_ITEMS)) {
         const id = item && item.id
         if (typeof id !== 'string' || !ID_RE.test(id)) { skipped.push({ id: String(id), reason: 'bad-id' }); continue }

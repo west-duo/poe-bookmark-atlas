@@ -11,6 +11,7 @@ import { groupByCategory } from '../lib/affixCategory.js'
 import { bindPageTip, hidePageTip } from './page-tip.js'
 import { buildTypeDoll } from './affix-type-doll.js'
 import { createUniquePane } from './unique-pane.js'
+import { mutationWords } from '../lib/mutationWords.js'
 
 export const AFFIX_BTN_CLASS = 'ba-affix-btn'
 export const AFFIX_POP_CLASS = 'ba-affix-pop'
@@ -234,8 +235,9 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   closeBtn.setAttribute('aria-label', '닫기')
   // 「비고유 | 고유」 — 고유는 속성이 아이템마다 정해져 있어 목록 짜임이 다르다(시안 B: 이름 목록 + 상세, 사용자 결정 2026-09-23)
   const canUnique = !!uniques && typeof onAddUnique === 'function'
-  // 바알 함양 줄은 PoE2 표에만 있다 — PoE1 안내에 「빨간 줄」 이야기를 하지 않는다
+  // 변이 줄(PoE2 바알 함양 · PoE1 삿된)이 표에 없으면 안내에 「빨간 줄」 이야기를 하지 않는다
   const hasMutated = canUnique && (uniques.u ?? []).some((e) => e?.m?.length)
+  const MW = mutationWords(game)
   let mode = canUnique && startMode === 'unique' ? 'unique' : 'normal'
   const modeSeg = el(doc, 'div', 'ba-affix-mode')
   modeSeg.setAttribute('role', 'group')
@@ -259,7 +261,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   if (canUnique) head.append(modeSeg)
   head.append(tabs, searchWrap, closeBtn)
   pop.appendChild(head)
-  const uniquePane = canUnique ? createUniquePane(doc, { table: uniques, onChange: () => refresh(), observe: observeUnique }) : null
+  const uniquePane = canUnique ? createUniquePane(doc, { table: uniques, onChange: () => refresh(), observe: observeUnique, game }) : null
 
   // ── 유형 선택 — 장비창 모양(시안 A, 사용자 결정 2026-09-16). 유형을 고르면 접혀 목록에 자리를 내준다. ──
   const pickClass = (cls) => {
@@ -383,7 +385,10 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
   // 스킬 부여도 따로 한 그룹이다 — 타락 후보와 한 개수 그룹에 섞이면 「둘 중 하나」가 돼 뜻이 바뀐다(독립 검토 2026-09-17).
   // 수치 없는 속성(flag)·값 직접 입력(manual) 띠도 각자 그룹이다 — 스킬 군 주얼 특출 패시브는 한 아이템에 여럿 붙는다(독립 검토 2026-11-16)
   const OWN_OR_SOURCES = new Set(['prefix', 'suffix', 'skill', 'flag', 'manual'])
-  const orGroupOf = (p) => (p.role === 'or' && OWN_OR_SOURCES.has(p.item.source) ? `or:${p.item.source}` : p.role)
+  const orGroupOf = (p) => {
+    const src = p.side ?? p.item.source
+    return p.role === 'or' && OWN_OR_SOURCES.has(src) ? `or:${src}` : p.role
+  }
   const orMinPicked = new Map() // 그룹 키 → 사용자가 고른 최소 개수(없으면 1)
   // 접두·접미가 없는 OR(타락)은 따로 한 그룹이다 — 이름은 그 그룹이 전부 타락일 때만 붙인다
   const OR_GROUP_LABEL = { 'or:prefix': '접두어', 'or:suffix': '접미어', 'or:skill': '스킬 부여', 'or:flag': '수치 없는 속성', 'or:manual': '값 직접 입력' }
@@ -549,7 +554,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     if (unique) parts.push({ kind: 'unique', text: unique.n, tip: `${unique.n} · ${unique.b}\n넣으면 아이템 검색칸·유형·희귀도(고유)도 이 아이템에 맞춰요` })
     if (must) parts.push({ kind: 'and', text: `필수 ${must}`, tip: `필수 ${must}개가 모두 붙은 매물을 찾아요` })
     if (or) parts.push({ kind: 'or', text: `후보 ${or}`, tip: `후보 ${or}개 중 하나 이상 붙은 매물을 찾아요` })
-    if (mut) parts.push({ kind: 'mutated', text: `함양 ${mut}`, tip: '기타 필터 「함양된 바알 고유: 예」도 함께 켜요' })
+    if (mut) parts.push({ kind: 'mutated', text: `${MW.short} ${mut}`, tip: `기타 필터 「${MW.filter}: 예」도 함께 켜요` })
     paintSummary(n, parts)
     paintHint(n)
     addBtn.textContent = n ? `${n}개 넣기` : only ? '이 고유만 넣기' : '넣기'
@@ -563,8 +568,8 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     if (state === hintState) return
     hintState = state
     hintText.textContent = mode === 'unique'
-      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요' + (hasMutated ? ' · 빨간 줄은 「함양된 바알 고유」도 켜요' : '')
-        : '이름으로 찾아 고르고 값을 넣으세요' + (hasMutated ? ' · 빨간 줄은 바알 함양 속성이에요' : ''))
+      ? (n ? '넣으면 유형·희귀도(고유)도 맞춰요' + (hasMutated ? ` · 빨간 줄은 「${MW.filter}」도 켜요` : '')
+        : '이름으로 찾아 고르고 값을 넣으세요' + (hasMutated ? ` · 빨간 줄은 ${MW.line}이에요` : ''))
       : n
         ? '「넣기」를 누르면 거래소 그룹에 들어가요 · 후보 중 최소 몇 개인지는 접두어·접미어 제목 줄에서 정해요'
         : '속성을 체크하면 후보로 들어가요 · 반드시 있어야 하면 행에서 「필수」를 누르세요'
@@ -582,13 +587,18 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
     return i < 0 ? Number.MAX_SAFE_INTEGER : i
   }
   const classOrder = new Map() // 유형 → 처음 고른 차례
+  /**
+   * 개수 그룹을 정하는 출처(접두·접미 …) — 같은 조건이 띠마다 접두·접미가 다르면(PoE1 일반 풀 ↔ 영향력·에센스 띠 36건)
+   * 목록에서 처음 나오는 줄(기본 띠가 먼저다)의 것으로 고정한다. 마지막에 누른 줄을 따르면 누른 순서로 그룹이 바뀐다.
+   */
+  const sideOf = (item) => (allAffixItems(current.list).find((it) => it.id === item.id && it.source) ?? item).source
   const setRow = (r, pick) => {
     if (pick === undefined) selected.delete(keyOf(r.item))
     else {
       const prev = selected.get(keyOf(r.item))
       const clsKey = current.cls ?? ''
       if (!classOrder.has(clsKey)) classOrder.set(clsKey, classOrder.size)
-      selected.set(keyOf(r.item), { ...pick, item: r.item, pos: prev?.pos ?? posOf(r.item), batch: prev?.batch ?? classOrder.get(clsKey), cls: prev?.cls ?? current.cls })
+      selected.set(keyOf(r.item), { ...pick, item: r.item, side: sideOf(r.item), pos: prev?.pos ?? posOf(r.item), batch: prev?.batch ?? classOrder.get(clsKey), cls: prev?.cls ?? current.cls })
     }
     for (const t of rows) if (t.item.id === r.item.id) paintRow(t)
     refresh()
@@ -645,7 +655,7 @@ export function openAffixPopover({ anchor, title, subtitle, list, classes = [], 
       if (on) { if (prev?.role === 'or') selected.delete(key) } else if (prev) {
         selected.set(key, { ...prev, role: 'or' }) // 같은 조건을 다른 줄에서 이미 골랐으면 그 값을 그대로 둔다
       } else {
-        selected.set(key, { index: defaultPick(r.item).index, role: 'or', item: r.item, pos: posOf(r.item), batch: classOrder.get(clsKey), cls: current.cls })
+        selected.set(key, { index: defaultPick(r.item).index, role: 'or', item: r.item, side: sideOf(r.item), pos: posOf(r.item), batch: classOrder.get(clsKey), cls: current.cls })
       }
     }
     rows.forEach(paintRow) // 같은 조건 줄이 다른 묶음에도 있다
@@ -1053,7 +1063,7 @@ function buildRow(doc, item, { setRow, defaultPick, selected, showSource, twins 
     // 같은 거래소 조건이 다른 띠에도 있다 — 한 곳만 고르면 된다. 다른 줄에서 값을 골랐으면 칩이 그 줄 이름으로 바뀐다.
     const twin = el(doc, 'span', 'ba-affix-twin', `같은 조건 ${twins.length + 1}곳`)
     twin.dataset.base = twin.textContent
-    twin.dataset.tip = `${twins.join(' · ')} 띠에도 있는 같은 거래소 조건이에요\n한 줄을 고르면 모두 함께 체크되고, 거래소에는 한 번만 들어가요\n값(티어)은 마지막에 값을 고른 줄의 것이 들어가요`
+    twin.dataset.tip = `${twins.join(' · ')} 띠에도 있는 같은 거래소 조건이에요\n한 줄을 고르면 모두 함께 체크되고, 거래소에는 한 번만 들어가요\n값(티어)은 마지막에 값을 고른 줄의 것이 들어가요${item.source === 'prefix' || item.source === 'suffix' ? '\n후보의 접두어·접미어 그룹은 목록에서 먼저 나오는 줄을 따라요' : ''}`
     twin.dataset.baseTip = twin.dataset.tip
     bindPageTip(twin, { placement: 'below' })
     twinSlot.appendChild(twin)

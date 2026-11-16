@@ -522,7 +522,24 @@ describe('openAffixPopover', () => {
       expect(essence.classList.contains('is-linked')).toBe(true)
       el.querySelector('.ba-affix-add').click()
       await Promise.resolve(); await Promise.resolve()
-      expect(onAdd.mock.calls[0][0]).toEqual([{ id: 'stat.mana', value: null, role: 'or' }]) // 픽스처 기본 줄은 source 가 없어 나누지 않는다
+      // 픽스처 기본 줄은 source 가 없다 — 출처가 있는 첫 줄(에센스 접두)의 개수 그룹으로 간다(누른 줄과 상관없다)
+      expect(onAdd.mock.calls[0][0]).toEqual([{ id: 'stat.mana', value: null, role: 'or:prefix' }])
+    })
+
+    it('띠마다 접두·접미가 다른 같은 조건은 목록에서 먼저 나오는 줄의 개수 그룹으로 — 누른 순서와 상관없다', async () => {
+      const sided = {
+        ...list,
+        prefix: [{ ...list.prefix[1], source: 'prefix' }],
+        essence: { prefix: [], suffix: [e('stat.mana', '마나 최대치 #', { source: 'suffix' })] },
+      }
+      const onAdd = vi.fn(async () => {})
+      const { el } = open({ list: sided, onAdd })
+      const [normal, essence] = rowsOf(el, '마나 최대치 #')
+      normal.querySelector('.ba-affix-role[data-role="or"]').click()
+      essence.querySelectorAll('.ba-affix-pill')[0].click() // 마지막에 누른 줄은 접미 띠
+      el.querySelector('.ba-affix-add').click()
+      await Promise.resolve(); await Promise.resolve()
+      expect(onAdd.mock.calls[0][0].map((p) => p.role)).toEqual(['or:prefix'])
     })
 
     it('한 줄의 체크를 풀면 같은 조건 줄도 모두 풀린다', () => {
