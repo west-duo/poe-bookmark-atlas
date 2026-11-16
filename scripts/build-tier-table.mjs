@@ -362,13 +362,22 @@ async function main() {
     const modIdsById = {} // 표에 실린 사다리를 만든 모드들 — 베이스별 목록(bases)을 모드 id 에서 능력치 id 로 옮기는 데 쓴다
     const flagById = {} // 값 칸이 없는 조건(「○○ 패시브 스킬 1개 추가」) — FLAG_POOL_GAMES 면 따로 띠로 싣는다
     const manualById = {} // 같은 요구 레벨에 값이 둘이라 사다리를 못 만든 조건 — FLAG_POOL_GAMES 면 「값 직접 입력」 띠로 싣는다
+    // flag·manual 띠의 능력치 → 모드 id — 베이스 거름(basesOf)이 이 띠도 일반 풀의 베이스별 모드로 거르게 한다.
+    // 없으면 베이스(스킬 군 주얼 크기)를 고를 때 특출 패시브 띠가 통째로 사라진다(2026-11-17 PoE1 주얼 bases).
+    const flagMods = {}
+    const manualMods = {}
+    const addMods = (into, id, modIds) => { into[id] = [...new Set([...(into[id] ?? []), ...modIds])] }
     for (const { cands, rows, inferred, affix, statNames, modIds } of families.values()) {
       if (hasValueConflict(rows)) {
         conflicts++
         // PoE1 스킬 군 주얼: 일반판과 소형판(…Small) 모드가 같은 요구 레벨에 다른 값이다(힘 [6,8] ↔ [12,14]) — 데이터에 베이스가 없어
         // 어느 쪽인지 가를 수 없다. 버리면 능력치·저항·생명력 같은 흔한 속성이 통째로 빠지므로 값은 사용자에게 맡긴다(독립 검토 2026-11-16).
         cands.forEach((ids, lineIndex) => {
-          for (const id of ids) if (!classTrade.valueless.has(id)) manualById[id] ??= { c: affixCategoryOf(statNames[lineIndex], cls), o: 1 }
+          for (const id of ids) {
+            if (classTrade.valueless.has(id)) continue
+            manualById[id] ??= { c: affixCategoryOf(statNames[lineIndex], cls), o: 1 }
+            addMods(manualMods, id, modIds)
+          }
         })
         continue
       }
@@ -382,6 +391,7 @@ async function main() {
           if (classTrade.valueless.has(id)) { // 넣을 칸이 없는 능력치 — 티어 사다리가 없다
             skippedValueless++
             flagById[id] ??= { c: affixCategoryOf(statNames[lineIndex], cls), o: 1 }
+            addMods(flagMods, id, modIds)
             continue
           }
           if (preferLadder(byStat[id], inferredById[id], tiers, inferred)) {
@@ -445,12 +455,14 @@ async function main() {
     for (const id of Object.keys(byStat)) delete manualById[id] // 다른 계열에서 사다리를 얻은 조건은 일반 열에 있다
     if (FLAG_POOL_GAMES.has(game) && Object.keys(manualById).length) {
       mechanics.push({ key: 'manual', n: '베이스마다 수치가 달라 티어를 정하지 않았어요 — 값은 거래소 칸에 직접 넣어요', t: '값을 직접 넣는 속성', f: 1, x: manualById })
+      poolMods.manual = manualMods
       specialCounts.manual ??= { total: 0, matched: 0 }
       specialCounts.manual.total += Object.keys(manualById).length
       specialCounts.manual.matched += Object.keys(manualById).length
     }
     if (FLAG_POOL_GAMES.has(game) && Object.keys(flagById).length) {
       mechanics.push({ key: 'flag', n: '수치 없이 붙는 속성 — 붙어 있기만 하면 걸려요', t: '수치 없는 속성', f: 1, x: flagById })
+      poolMods.flag = flagMods
       specialCounts.flag ??= { total: 0, matched: 0 }
       specialCounts.flag.total += Object.keys(flagById).length
       specialCounts.flag.matched += Object.keys(flagById).length
@@ -585,7 +597,8 @@ export function specialAffixesOf(mods, index, valueless, ambiguous, { sided = fa
  * @returns {Array<{id:string, n:string, k:Record<string,string[]>}>}
  */
 export function basesOf(data, poolMods) {
-  const bucketOfKey = { n: 'normal', ...Object.fromEntries(SPECIAL_SOURCES.map((s) => [s.key, s.bucket])) }
+  // flag·manual 띠는 일반 풀(normal)에서 나온 조건이다
+  const bucketOfKey = { n: 'normal', flag: 'normal', manual: 'normal', ...Object.fromEntries(SPECIAL_SOURCES.map((s) => [s.key, s.bucket])) }
   const out = []
   for (const base of Array.isArray(data?.bases) ? data.bases : []) {
     const name = base?.name?.kr

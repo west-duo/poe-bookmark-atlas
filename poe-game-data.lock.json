@@ -1,9 +1,9 @@
 {
   "schemaVersion": 2,
   "repository": "west-duo/poe-game-data",
-  "tag": "v2026.11.16",
-  "commit": "51a1cc9c10fe337aaf33f782ec9644967b3d18dd",
-  "snapshot": "v2026.11.16",
+  "tag": "v2026.11.17.1",
+  "commit": "a664b894db7170dc82dc06ac2af3f12fb99f88c7",
+  "snapshot": "v2026.11.17.1",
   "icons": {
     "manifestSha256": "7c84ece5cb4d3db1cd9a4b7b1fd2cce6dd4ae3873fd375149b96f0952037c868",
     "source": "local-ggpk-build",
