@@ -39,6 +39,9 @@ const IMPLICIT_GROUP = '고정'
 const SKILL_GROUP = '스킬'
 const DESECRATED_GROUP = '훼손된'
 const CULTIVATED_HEAD = '<h5 class="card-header">Cultivated Uniques'
+// PoE1 「삿된」(Foulborn) 고유 — 거래소 기타 필터 「삿된 아이템」(misc_filters.mutated, PoE2 바알 함양과 같은 id).
+// poedb 는 카드 하나가 (바뀌는 고정 속성 하나 → 삿된 속성 하나) 짝이다 — 같은 고유가 카드 여러 장(최대 4)으로 나온다.
+const FOULBORN_HEAD = '<h5 class="card-header">Foulborn 고유 아이템'
 
 // 게임별 출처 — 사이트(목록·개별 페이지)와 거래소 경로
 const SITE = { poe2: { dir: 'poe2db', host: 'https://poe2db.tw' }, poe1: { dir: 'poedb', host: 'https://poedb.tw' } }
@@ -60,41 +63,63 @@ export function htmlLines(inner) {
 }
 
 /**
- * 저장한 고유 목록 페이지 → 고유 카드와 바알 함양 줄.
+ * 저장한 고유 목록 페이지 → 고유 카드와 바알 함양(PoE2)·삿된(PoE1) 줄.
  * @returns {{ cards: Array<{name:string, base:string, corrupted:boolean, implicit:string[][], explicit:string[][]}>,
- *            mutated: Map<string,{explicit:string[][], mutated:string[][]}> }}
+ *            mutated: Map<string,{explicit:string[][], mutated:string[][], partial?:boolean}> }}
  *   속성은 칸(div) 단위의 줄 묶음이다 — 한 칸이 여러 줄이면 한 속성이 줄바꿈된 것일 수도, 속성 둘일 수도 있다.
  *   함양 카드의 고정 속성은 본 목록과 다를 수 있어(48개 중 17개 — 영혼의 외투 「정신력 +75」 대신 「토템 생명력 감소」)
  *   따로 돌려준다. 어느 쪽이 실제 함양 매물과 맞는지는 매물로 확인할 일이다.
+ *   PoE1 삿된 카드의 고정 속성은 **그 카드에서 바뀌는 속성 하나**뿐이라 전체 목록이 아니다 — `partial` 로 알린다(mf 로 싣지 않는다).
  */
 export function parseUniquePage(html) {
-  const cut = html.indexOf(CULTIVATED_HEAD)
-  const main = cut >= 0 ? html.slice(0, cut) : html
+  // 변이 고유 구역 — PoE2 는 페이지 끝까지, PoE1 은 다음 탭(`tab-pane`) 앞까지다(뒤에 커뮤니티 위키 탭이 붙는다)
+  const foul = html.indexOf(FOULBORN_HEAD)
+  const cut = foul >= 0 ? foul : html.indexOf(CULTIVATED_HEAD)
+  const nextTab = foul >= 0 ? html.indexOf('class="tab-pane', foul) : -1
+  const secEnd = nextTab >= 0 ? nextTab : html.length
+  const main = cut >= 0 ? html.slice(0, cut) + html.slice(secEnd) : html
   const cards = []
   const cardRe = /<span class="uniqueName">([^<]+)<\/span>\s*<span class="uniqueTypeLine">([^<]+)<\/span><\/a>([\s\S]*?)(?=<div class="col">|$)/g
   // 설명문 칸(poedb PoE1: `<span class="item_description">("최근"은 지난 4초 동안을 의미합니다)</span>`)은 속성이 아니라 뺀다 —
   // PoE1 목록에서 못 이은 줄 1,233개 중 대부분이 이것이었다(2026-11-16). poe2db 목록에는 이 표시가 없다.
+  const isNote = (inner) => inner.trimStart().startsWith('<span class="item_description">')
   const blocks = (body, cls) => [...body.matchAll(new RegExp(`<div class="${cls}">([\\s\\S]*?)</div>`, 'g'))]
-    .filter((m) => !m[1].trimStart().startsWith('<span class="item_description">'))
+    .filter((m) => !isNote(m[1]))
     .map((m) => htmlLines(m[1]))
   for (const m of main.matchAll(cardRe)) {
     cards.push({ name: m[1].trim(), base: m[2].trim(), corrupted: m[3].includes('<div class="corrupted">'), implicit: blocks(m[3], 'implicitMod'), explicit: blocks(m[3], 'explicitMod') })
   }
   const mutated = new Map()
   if (cut >= 0) {
-    const sec = html.slice(cut)
+    const sec = html.slice(cut, secEnd)
     for (const m of sec.matchAll(/<a class="UniqueItems UniqueItem"[^>]*>([^<]+)<\/a>([\s\S]*?)(?=<div class="col">|$)/g)) {
-      mutated.set(m[1].trim(), {
-        explicit: blocks(m[2], 'explicitMod'),
-        mutated: [...m[2].matchAll(/<div class="poe2 mutatedMod"><div>([\s\S]*?)<\/div><\/div>/g)].map((x) => htmlLines(x[1])),
-      })
+      const name = m[1].trim()
+      if (foul < 0) {
+        mutated.set(name, {
+          explicit: blocks(m[2], 'explicitMod'),
+          mutated: [...m[2].matchAll(/<div class="poe2 mutatedMod"><div>([\s\S]*?)<\/div><\/div>/g)].map((x) => htmlLines(x[1])),
+        })
+        continue
+      }
+      // PoE1: `<span class="mutatedMod"><div>문구</div><div><span class="item_description">(설명)</span></div></span> <i …>`.
+      // poedb 가 「Not in game」 으로 표시한 카드는 게임에 없는 속성이라 뺀다(373장 중 9장).
+      if (m[2].includes('data-bs-title="Not in game"')) continue
+      const cur = mutated.get(name) ?? { explicit: [], mutated: [], partial: true }
+      for (const part of m[2].split('<span class="mutatedMod">').slice(1)) {
+        const body = part.split('<i data-hover=')[0]
+        const mod = [...body.matchAll(/<div>([\s\S]*?)<\/div>/g)].filter((x) => !isNote(x[1])).flatMap((x) => htmlLines(x[1]))
+        if (mod.length && !cur.mutated.some((x) => x.join('\n') === mod.join('\n'))) cur.mutated.push(mod)
+      }
+      mutated.set(name, cur)
     }
   }
   return { cards, mutated }
 }
 
 // 화면에 보이지 않는 줄 — poe2db 가 내부 스탯을 그대로 적은 것(`visual use power charges … [1]`, `Has 5 Augment Sockets (Hidden)`)
-const HIDDEN = /^[a-z]|\(Hidden\)$|\[\d+\]$/
+// poedb(PoE1) 충신의 가죽·군주의 가죽의 `[Six Linked]` 는 속성이 아니라 홈 연결 표시다 — 무작위 자리로 잡히면 개별 페이지의
+// 키스톤 풀을 가로챈다(2026-11-17)
+const HIDDEN = /^[a-z]|\(Hidden\)$|\[\d+\]$|^\[Six Linked\]$/
 // 무작위 풀 자리표시 — `[3 Random Socket Modifiers]`, 줄 중간의 `[Random Curse]`, `Random 1 Keystone Passive Skill [1,33]`,
 // 마법사의 피의 `Mages Legacy의 유산`(poe2db 가 무작위 유산 이름을 풀지 못한 자리),
 // 통과의례의 `… [Azmeri Spirit] …`(영문 대괄호 자리 — 개별 페이지 표에 혼백 10가지)
@@ -252,7 +277,9 @@ export function randomLine(text, ctx = {}) {
   const sided = page.some((r) => r.s)
   // 표에 접두·접미 칸이 없으면(태어나지 않은 리치) 그 고유 전용 풀이다 — 일반 훼손 자리(「Custom」 = 사용자가 훼손한 자리)와
   // 키스톤 자리(살점 도가니 — 키스톤은 페이지의 다른 탭 「Passive /33」, 「속성 부여」 표는 「less [random stat]」 줄의 풀)에는 붙이지 않는다
-  const rows = sided ? page.filter((r) => !side || r.s === side) : /Custom|Keystone/i.test(text) ? [] : page
+  // 단, poedb(PoE1) 「<영문 이름> Mods」 표는 그 고유의 속성 표 전체라 키스톤 자리에도 붙인다(군주의 가죽 「[Random Keystone]」 35개)
+  const keystoneOk = /Keystone/i.test(text) && page.modsTable
+  const rows = sided ? page.filter((r) => !side || r.s === side) : /Custom|Keystone/i.test(text) && !keystoneOk ? [] : page
   if (rows.length) {
     const desecrated = /Desecrated/i.test(text)
     if (ctx.used) ctx.used.page = true
@@ -400,27 +427,43 @@ function poolOf(affixes, cls) {
  * 우물의 심장은 `Prefix|Suffix` 칸이 있고, 모리오르 인빅투스는 설명 칸만 있다. 설명 뒤의 태그 배지(원소·화염…)는 뺀다.
  * @returns {Array<{t:string, s?:'p'|'s'}>|null} 표가 없으면 null
  */
-export function parsePagePool(html, name) {
+export function parsePagePool(html, name, slug = null) {
   const heads = [...String(html).matchAll(/<h5 class="card-header"[^>]*>([\s\S]*?)<\/h5>/g)]
   // 「<이름> 속성 부여 /N」 — **제목이 이 고유의 이름으로 시작하는 표만**. 다른 고유의 표가 같은 페이지에 실리기도 한다
   // (쿨레막의 손아귀 페이지에 「지식의 매듭 Modifiers /27」, 2026-09-25 전수 점검)
-  const at = heads.findIndex((h) => {
-    const title = h[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
-    return (!name || title.startsWith(name)) && /(?:속성 부여|Modifiers)\s*\/\s*\d+/.test(title)
-  })
+  // poedb(PoE1)는 일부 고유가 「<영문 이름> Mods /N」 이다(과대망상 「Megalomaniac Mods /287」) — 영문 이름은 페이지 주소(slug)와
+  // 글자만 맞춰 본다(`Zana's Ingenuity` ↔ `Zanas_Ingenuity`).
+  const letters = (s) => String(s).toLowerCase().replace(/[^a-z0-9]/g, '')
+  const titleOf = (h) => h[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+  // 같은 페이지에 둘 다 있으면(이중 인격) 한글 「속성 부여」 표가 먼저다
+  let at = heads.findIndex((h) => (!name || titleOf(h).startsWith(name)) && /(?:속성 부여|Modifiers)\s*\/\s*\d+/.test(titleOf(h)))
+  if (at < 0 && slug) {
+    at = heads.findIndex((h) => {
+      const en = /^(.+?) Mods\s*\/\s*\d+$/.exec(titleOf(h))
+      return !!en && letters(en[1]) === letters(decodeURIComponent(slug))
+    })
+  }
   if (at < 0) return null
-  const body = html.slice(heads[at].index, heads[at + 1]?.index ?? html.length)
+  const card = html.slice(heads[at].index, heads[at + 1]?.index ?? html.length)
+  // 표 하나만 — poedb(PoE1)는 같은 카드에 버전 기록(「Introduced to the game.」)·영문 속성 표가 이어 붙는다
+  const tableEnd = card.indexOf('</table>')
+  const body = tableEnd >= 0 ? card.slice(0, tableEnd) : card
+  // 설명 칸 — 「Mods」 표는 `Pre/Suf · 이름 · Weight · 레벨`(자나의 기발함은 `name · group`)이라 마지막 칸이 설명이 아니다.
+  // 설명(Desc·Description) 열이 있으면 종전대로 마지막 칸, 없으면 「이름·name」 열.
+  const heads2 = [...((/<thead>([\s\S]*?)<\/thead>/.exec(body) ?? [])[1] ?? '').matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((m) => htmlLines(m[1]).join(''))
+  const nameCol = heads2.some((h) => /^desc/i.test(h)) ? -1 : heads2.findIndex((h) => /^(이름|name)$/i.test(h))
   const rows = []
   for (const r of body.matchAll(/<tr>([\s\S]*?)<\/tr>/g)) {
     const cells = [...r[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1])
     if (!cells.length) continue
-    const desc = cells[cells.length - 1].replace(/<span class="badge[^"]*"[^>]*>[\s\S]*?<\/span>/g, '')
+    const desc = cells[nameCol >= 0 && nameCol < cells.length ? nameCol : cells.length - 1].replace(/<span class="badge[^"]*"[^>]*>[\s\S]*?<\/span>/g, '')
     // 내부 스탯 줄(`use unique blackflame ignite effect [0]`)은 목록 카드처럼 뺀다 — 남기면 두 줄 매칭이 실패한다
     const t = htmlLines(desc).filter((l) => !HIDDEN.test(l)).join('\n')
     if (!t) continue
-    const kind = cells.length > 1 ? htmlLines(cells[0]).join('') : ''
-    rows.push(/^prefix$/i.test(kind) ? { t, s: 'p' } : /^suffix$/i.test(kind) ? { t, s: 's' } : { t })
+    const kind = cells.length > 1 && nameCol !== 0 ? htmlLines(cells[0]).join('') : ''
+    rows.push(/^(prefix|접두어)$/i.test(kind) ? { t, s: 'p' } : /^(suffix|접미어)$/i.test(kind) ? { t, s: 's' } : { t })
   }
+  if (/ Mods\s*\/\s*\d+$/.test(titleOf(heads[at]))) rows.modsTable = true // randomLine 이 키스톤 자리에도 쓴다
   return rows
 }
 
@@ -686,16 +729,21 @@ async function main() {
     const cult = mutated.get(card.name)
     const slug = slugs.get(`${card.name}\u0000${card.base}`)
     const pagePath = slug ? join(PAGES, `${slug}.html`) : null
-    PAGE = pagePath && existsSync(pagePath) ? parsePagePool(readFileSync(pagePath, 'utf8'), card.name) : null
+    PAGE = pagePath && existsSync(pagePath) ? parsePagePool(readFileSync(pagePath, 'utf8'), card.name, slug) : null
     PAGE_USED.page = false
     DESECRATED_D = affixes[c]?.d ?? null
+    // 기본 속성(고정) 자리에는 개별 페이지 표를 쓰지 않는다 — 그 표는 명시 속성 풀이다. 합성 고리 5종의
+    // 「[One to three random synthesis implicit modifiers]」 에 전령 명시 풀이 고정 id 로 붙었다(독립 검토 2026-11-17)
+    const pageForExplicit = PAGE
+    PAGE = null
     const i = linesOf(card.implicit, indexes[IMPLICIT_GROUP], pool, counts)
+    PAGE = pageForExplicit
     const f = linesOf(card.explicit, explicitIndex, pool, counts)
     const m = linesOf(cult?.mutated ?? [], explicitIndex, pool, counts)
     if (i.length) entry.i = i
     if (f.length) entry.f = f
     if (m.length) entry.m = m
-    if (cult) {
+    if (cult && !cult.partial) {
       const mf = linesOf(cult.explicit, explicitIndex, pool, { hidden: 0 })
       const same = mf.length === f.length && mf.every((l) => f.some((x) => x.t === l.t))
       if (!same) { entry.mf = mf; mfDiffers.push(card.name) }

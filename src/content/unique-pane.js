@@ -10,6 +10,7 @@
 
 import { findUniques, lineState, lineRange, cleanLineValue, uniqueKey, pickable } from '../lib/uniqueList.js'
 import { bindPageTip } from './page-tip.js'
+import { mutationWords } from '../lib/mutationWords.js'
 import { groupByCategory } from '../lib/affixCategory.js'
 import vaalOrbIcon from '../icons/vaal-cultivation-orb.png'
 
@@ -33,7 +34,8 @@ const ROLE_TIP = {
  * @param {Document} doc
  * @param {{table:{u:object[]}, onChange:()=>void}} args
  */
-export function createUniquePane(doc, { table, onChange, observe = null }) {
+export function createUniquePane(doc, { table, onChange, observe = null, game = 'poe2' }) {
+  const W = mutationWords(game) // 바알 함양(PoE2) · 삿된(PoE1)
   const root = el(doc, 'div', 'ba-uq')
   const listEl = el(doc, 'div', 'ba-uq-list')
   listEl.setAttribute('role', 'listbox')
@@ -57,7 +59,7 @@ export function createUniquePane(doc, { table, onChange, observe = null }) {
   function setQuery(nextTerm, nextCls) {
     term = nextTerm ?? ''
     cls = nextCls ?? null
-    shown = findUniques(table, term, cls)
+    shown = findUniques(table, term, cls, W.short)
     // 고른 고유가 목록에 남아 있으면 그대로, 아니면 첫 항목을 보인다(검색 중 오른쪽이 비지 않게)
     if (!active || !shown.includes(active)) active = shown.find((e) => pickedUnique && uniqueKey(e) === pickedUnique) ?? shown[0] ?? null
     renderList()
@@ -84,7 +86,7 @@ export function createUniquePane(doc, { table, onChange, observe = null }) {
       b.appendChild(text)
       const marks = el(doc, 'span', 'ba-uq-item-marks')
       // 바알 함양 오브로 속성이 바뀔 수 있는 고유 — 점 대신 게임 표기 「바알 고유」(거래소 기타 필터 「함양된 바알 고유」와 같은 말)
-      if (e.m?.length) marks.appendChild(el(doc, 'i', 'ba-uq-vaal', '바알 고유'))
+      if (e.m?.length) marks.appendChild(el(doc, 'i', 'ba-uq-vaal', W.badge))
       if (e.x) marks.appendChild(el(doc, 'i', 'ba-uq-corrupt', '타락'))
       b.appendChild(marks)
       b.addEventListener('click', () => { active = e; renderList(); renderDetail(); changed() })
@@ -99,9 +101,9 @@ export function createUniquePane(doc, { table, onChange, observe = null }) {
     const head = el(doc, 'div', 'ba-uq-head')
     head.append(el(doc, 'h3', 'ba-uq-name', e.n), el(doc, 'span', 'ba-uq-base', e.b))
     if (e.m?.length) {
-      const vaal = head.appendChild(el(doc, 'span', 'ba-uq-vaal', '바알 고유'))
-      orbImg(vaal)
-      vaal.dataset.tip = '바알 함양 오브로 속성이 바뀔 수 있는 고유예요\n아래 빨간 줄이 바뀔 수 있는 속성이에요'
+      const vaal = head.appendChild(el(doc, 'span', 'ba-uq-vaal', W.badge))
+      if (W.orb) orbImg(vaal)
+      vaal.dataset.tip = W.badgeTip
       bindPageTip(vaal, { placement: 'below' })
     }
     if (e.x) head.appendChild(el(doc, 'span', 'ba-uq-corrupt', '타락 고유'))
@@ -115,7 +117,7 @@ export function createUniquePane(doc, { table, onChange, observe = null }) {
     detail.appendChild(cols)
     section(e, 'i', '기본 속성')
     fixedSection(e)
-    if (e.m?.length) section(e, 'm', '바알 함양 — 최대 2개까지 이 중에서 바뀌어요', { mutated: true })
+    if (e.m?.length) section(e, 'm', W.section, { mutated: true })
     const obs = observed.get(uniqueKey(e))
     if (obs?.data?.lines?.length) section(e, 'o', `매물에서 본 속성 — 싼 매물 ${obs.data.count}개 기준 · 무작위로 붙는 속성일 수 있어요`)
   }
@@ -185,7 +187,7 @@ export function createUniquePane(doc, { table, onChange, observe = null }) {
     const sec = el(doc, 'section', 'ba-uq-sec')
     sec.dataset.kind = kind
     const title = sec.appendChild(el(doc, 'h4', 'ba-uq-sec-title', label))
-    if (kind === 'm') orbImg(title)
+    if (kind === 'm' && W.orb) orbImg(title)
     lines.forEach((line, i) => {
       if (line.k === 'r' && line.p?.length) sec.appendChild(poolBlock(e, kind, line, i, mutated))
       else sec.appendChild(row(e, kind, line, i, mutated || (kind === 'o' && !!line.mutated)))

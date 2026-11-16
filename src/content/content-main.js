@@ -30,6 +30,7 @@ import { attachAffixButtons, openAffixPopover, groupToken, groupLabel, groupRowT
 import { affixListFor, basesFor } from '../lib/affixList.js'
 import { rarityOfItem, rarityOfQuery } from '../lib/searchRarity.js'
 import { shortcutKeys } from '../lib/commandKeys.js'
+import { mutationWords } from '../lib/mutationWords.js'
 
 const LOG = (...a) => console.log('[BA]', ...a)
 const game = location.pathname.startsWith('/trade2') ? 'poe2' : 'poe1'
@@ -1578,7 +1579,8 @@ function addResultMessage(res, label) {
   const skipped = Array.isArray(res?.skipped) ? res.skipped : []
   if (res?.error && !added) return '거래소 그룹을 찾지 못해 넣지 못했어요. 페이지를 새로고침한 뒤 다시 시도해 주세요.'
   const have = skipped.filter((s) => s?.reason === 'have').length
-  const refused = skipped.length - have
+  const over = skipped.filter((s) => s?.reason === 'limit').length
+  const refused = skipped.length - have - over
   const parts = []
   const valued = Array.isArray(res?.valued) ? res.valued.length : 0
   const created = Array.isArray(res?.created) ? res.created : []
@@ -1595,6 +1597,7 @@ function addResultMessage(res, label) {
   if (altGroups) parts.push(`문구가 같은 조건이 둘인 속성 ${altGroups}개는 「둘 중 하나」로 새 「개수(최소 1)」 그룹에 넣었어요.`)
   if (have) parts.push(`${have}개는 이미 그 그룹에 있어서 뺐어요.`)
   if (refused) parts.push(`${refused}개는 거래소가 받지 않았어요.`)
+  if (over) parts.push(`한 번에 넣을 수 있는 수를 넘어 ${over}개는 넣지 못했어요 — 나눠서 다시 넣어 주세요.`)
   const typed = Array.isArray(res?.typed) ? res.typed : []
   const changed = []
   if (typed.includes('category') && res?.typeFilters?.category) {
@@ -1610,7 +1613,8 @@ function addResultMessage(res, label) {
   // 바알 함양 줄을 골랐으면 기타 필터 「함양된 바알 고유: 예」 — 거래소 화면에서 그 필터를 못 찾았으면 직접 켜 달라고 한다
   if (res?.misc?.mutated) {
     const misced = Array.isArray(res?.misced) ? res.misced : []
-    parts.push(misced.includes('mutated') ? '기타 필터 「함양된 바알 고유: 예」도 켰어요.' : '기타 필터 「함양된 바알 고유」는 켜지 못했어요 — 기타 필터에서 「예」로 직접 골라 주세요.')
+    const f = mutationWords(game).filter // PoE2 「함양된 바알 고유」 · PoE1 「삿된 아이템」
+    parts.push(misced.includes('mutated') ? `기타 필터 「${f}: 예」도 켰어요.` : `기타 필터 「${f}」는 켜지 못했어요 — 기타 필터에서 「예」로 직접 골라 주세요.`)
   }
   return parts.join(' ') || '넣은 속성이 없어요.'
 }

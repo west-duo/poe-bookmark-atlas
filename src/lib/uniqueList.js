@@ -81,20 +81,21 @@ const byName = (a, b) => a.n.localeCompare(b.n, 'ko')
 /**
  * 고유 목록 — 검색어가 없으면 그 유형의 고유만, 있으면 **모든 유형**에서 찾는다(이름으로 찾는 사람이 유형을 먼저 고르지 않는다).
  * 검색은 속성 목록과 같은 감각이다: 띄어 쓴 조각마다 이름·베이스·속성 문구 어딘가에 있으면 맞는다(순서 무관, 공백 무시).
- * 「함양」 조각은 바알 함양 속성이 있는 고유에 맞는다.
+ * 「함양」(PoE1 은 「삿된」) 조각은 변이 속성이 있는 고유에 맞는다.
  * 정렬: 지금 유형 → 이름이 맞는 것 → 가나다.
  * @param {{u:Array<object>}|null} table
  * @param {string} term
  * @param {string|null} cls
+ * @param {string} [mutationWord] 변이 속성이 있는 고유에 맞는 검색 조각(mutationWords(game).short)
  * @returns {Array<object>} 표 항목
  */
-export function findUniques(table, term, cls) {
+export function findUniques(table, term, cls, mutationWord = '함양') {
   const all = Array.isArray(table?.u) ? table.u : []
   const parts = String(term ?? '').toLowerCase().split(/\s+/).map((p) => p.replace(/^~+/, '')).filter(Boolean)
   if (!parts.length) return all.filter((e) => cls && e.c === cls).sort(byName)
   const hits = all.filter((e) => {
     // was — 매물 관찰로 무작위 풀이 된 줄의 원래 문구(「시작 지점」 · 「칼구르」로도 찾게)
-    const hay = norm([e.n, e.b, ...LINE_KINDS.flatMap((k) => (e[k] ?? []).flatMap((l) => [l.t, l.was ?? ''])), e.m?.length ? '함양' : ''].join(' '))
+    const hay = norm([e.n, e.b, ...LINE_KINDS.flatMap((k) => (e[k] ?? []).flatMap((l) => [l.t, l.was ?? ''])), e.m?.length ? mutationWord : ''].join(' '))
     return parts.every((p) => hay.includes(norm(p)))
   })
   const nameHit = (e) => parts.every((p) => norm(e.n).includes(norm(p)))

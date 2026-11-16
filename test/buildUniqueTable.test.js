@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved } from '../scripts/build-unique-table.mjs'
+import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved, parseUniquePage } from '../scripts/build-unique-table.mjs'
 
 // 문구는 poe2db 저장 HTML·거래소 목록의 실제 표기(2026-09-23). 틀려도 조용한 판정이라 대표 줄만 고정한다.
 const index = new Map([
@@ -63,5 +63,23 @@ describe('키스톤 선택지 한글화 뒤에도 같은 표', () => {
       { t: '혈마법', id: 'explicit.stat_3831171903|5' },
       { t: '오아시스', id: 'explicit.stat_3831171903|19' },
     ])
+  })
+})
+
+describe('parseUniquePage — PoE1 삿된(Foulborn) 구역', () => {
+  // poedb.tw/kr/Unique_item 2026-11-16 저장본에서 줄인 마크업 — 카드 하나가 (바뀌는 고정 속성 → 삿된 속성 하나) 짝이다
+  const card = (name, explicit, mutated, extra = '') => `<div class="col"><div class="d-flex border-top rounded"><div class="flex-shrink-0"><a class="UniqueItems UniqueItem" href="X"><img src="a.webp" /></a></div><div class="flex-grow-1 ms-2"><a class="UniqueItems UniqueItem" href="X">${name}</a><div class="explicitMod">${explicit}</div><div><span class="mutatedMod">${mutated}</span> <i data-hover="?s=Data" class="fas fa-info-circle"></i> ${extra}</div></div></div></div>`
+  const html = '<div class="col"><a href="X"><span class="uniqueName">에일러덱스</span> <span class="uniqueTypeLine">아게이트 목걸이</span></a><div class="explicitMod">생명력 최대치 +30</div></div>' +
+    '<div id="Foulborn고유아이템" class="tab-pane fade"><div class="card mb-2 "><h5 class="card-header">Foulborn 고유 아이템 /3 </h5>' +
+    card('에일러덱스', '생명력 최대치 +30', '<div>섬뜩한 충전기</div><div><span class="item_description">(설명문)</span></div>') +
+    card('에일러덱스', '생명력 최대치 +30', '<div>마나 최대치 +50</div>') +
+    card('에일러덱스', '생명력 최대치 +30', '<div>게임에 없는 속성</div>', '<i class="fa-solid fa-bug text-danger" data-bs-toggle="tooltip" data-bs-title="Not in game"></i>') +
+    '</div></div><div id="Uniqueitem" class="tab-pane fade"><a class="UniqueItems UniqueItem" href="Y">위키 링크</a></div>'
+
+  it('카드 여러 장의 삿된 속성을 한 고유로 모으고, 설명문·「Not in game」 카드·뒤 탭은 뺀다', () => {
+    const { cards, mutated } = parseUniquePage(html)
+    expect(cards.map((c) => c.name)).toEqual(['에일러덱스'])
+    expect([...mutated.keys()]).toEqual(['에일러덱스'])
+    expect(mutated.get('에일러덱스')).toEqual({ explicit: [], mutated: [['섬뜩한 충전기'], ['마나 최대치 +50']], partial: true })
   })
 })
