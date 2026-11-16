@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved, parseUniquePage } from '../scripts/build-unique-table.mjs'
+import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved, parseUniquePage, chargeRows, pageVariants } from '../scripts/build-unique-table.mjs'
 
 // 문구는 poe2db 저장 HTML·거래소 목록의 실제 표기(2026-09-23). 틀려도 조용한 판정이라 대표 줄만 고정한다.
 const index = new Map([
@@ -80,6 +80,25 @@ describe('parseUniquePage — PoE1 삿된(Foulborn) 구역', () => {
     const { cards, mutated } = parseUniquePage(html)
     expect(cards.map((c) => c.name)).toEqual(['에일러덱스'])
     expect([...mutated.keys()]).toEqual(['에일러덱스'])
-    expect(mutated.get('에일러덱스')).toEqual({ explicit: [], mutated: [['섬뜩한 충전기'], ['마나 최대치 +50']], partial: true })
+    // replaces — 삿된 속성마다 그 카드에서 바뀌는 고정 속성
+    expect(mutated.get('에일러덱스')).toEqual({ explicit: [], mutated: [['섬뜩한 충전기'], ['마나 최대치 +50']], replaces: [[['생명력 최대치 +30']], [['생명력 최대치 +30']]], partial: true })
+  })
+})
+
+describe('선도자의 상징 — 베이스 변형과 충전 자리', () => {
+  const pop = (base, implicit, explicit) => `<div class="newItemPopup UniquePopup " > <div class="itemHeader doubleLine"> <div class="itemName"> <span class="lc">선도자의 상징</span> </div> <div class="itemName typeLine"> <span class="lc">${base}</span> </div> </div><div class="implicitMod">${implicit}</div>${explicit.map((x) => `<div class="explicitMod">${x}</div>`).join('')}</div>`
+  it('충전 자리는 적힌 종류만 — 다른 충전이 함께 든 줄은 뺀다', () => {
+    const rows = [{ t: '권능 충전 하나당 피해 5% 증가' }, { t: '격분 충전 하나당 피해 5% 증가' }, { t: '최대 권능 충전 상태에서 저주 1회 추가 적용 가능' }, { t: '생명력 최대치 +10' }]
+    expect(chargeRows('[Three Power Charge mods]', rows).map((r) => r.t)).toEqual(['권능 충전 하나당 피해 5% 증가', '최대 권능 충전 상태에서 저주 1회 추가 적용 가능'])
+    expect(chargeRows('[Two Frenzy Charge mods and one Power Charge Mod]', rows)).toHaveLength(3)
+    expect(chargeRows('[Random Keystone]', rows)).toBe(rows)
+  })
+  it('같은 베이스 변형(쌍보석 3종)은 공통 줄만 남기고 충전 자리를 하나로 합친다', () => {
+    const html = pop('루비 반지', '화염 저항 +20%', ['최대 생명력 5% 증가', '[Three Endurance Charge mods]']) +
+      pop('쌍보석 반지', '냉기 및 번개 저항 +12%', ['최대 생명력 5% 증가', '[Two Frenzy Charge mods and one Power Charge Mod]']) +
+      pop('쌍보석 반지', '화염 및 냉기 저항 +12%', ['최대 생명력 5% 증가', '[Two Endurance Charge mods and one Frenzy Charge Mod]'])
+    const v = pageVariants(html, '선도자의 상징')
+    expect(v.map((x) => x.base)).toEqual(['루비 반지', '쌍보석 반지'])
+    expect(v[1]).toEqual({ base: '쌍보석 반지', implicit: [], explicit: [['최대 생명력 5% 증가'], ['[Frenzy Charge, Power Charge, Endurance Charge mods]']] })
   })
 })
