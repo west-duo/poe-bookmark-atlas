@@ -568,7 +568,7 @@ function pobEnsureStyle() {
   .ba-affix-doll-sub > .ba-affix-doll-subchip { align-self: flex-start; }
   .ba-affix-doll-slots { display: flex; flex-wrap: wrap; gap: 5px; }
   .is-weapon .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(3, 80px); grid-auto-rows: minmax(52px, auto); }
-  .is-offhand > .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(2, 80px); grid-auto-rows: 60px; }
+  .is-offhand > .ba-affix-doll-slots { display: grid; grid-template-columns: repeat(2, 80px); grid-auto-rows: minmax(60px, auto); }
   /* 가운데 「방어구」 — 게임 장비창 모양. 투구·갑옷·허리띠 같은 너비, 장갑·허리띠·장화 한 줄 같은 높이,
      목걸이는 갑옷 윗선 · 반지는 갑옷 아랫선(사용자 요청 2026-09-16) */
   /* 방어구 영역은 무기·보조 영역과 같은 높이로 늘어나고, 칸은 그 높이를 비율로 나눠 가진다(사용자 요청 2026-09-17) */
@@ -1394,7 +1394,7 @@ const obsGate = { lastAt: 0, lastSearchAt: 0, blockedUntil: 0, busy: false }
 const UNIQUE_OBS_SEARCH_GAP = 4000
 async function observeUnique(entry, { fresh = false } = {}) {
   const league = leagueFromUrl()
-  const key = `${league}|${entry.n}|${entry.b}`
+  const key = `${game}|${league}|${entry.n}|${entry.b}` // 게임을 넣는다 — 두 게임에 이름·베이스가 같은 고유가 22개다(독립 검토 2026-11-16)
   let store = {}
   try {
     const raw = (await chrome.storage.local.get(UNIQUE_OBS_KEY))[UNIQUE_OBS_KEY]

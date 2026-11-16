@@ -29,10 +29,9 @@ const SANCTUM_GROUP = '성역' // 유물 속성이 거래소에서 걸리는 그
 // Relic 은 v2026.09.16.7 부터 성역 설명 파일로 문장이 채워졌다(그 전에는 137개 중 9줄뿐이라 뺐었다).
 const GROUP_BY_CLASS = { Relic: SANCTUM_GROUP }
 const SKIP_FILES = new Set(['Map.json'])
-// 게임별로 더 뺄 파일 — PoE1 주얼 두 파일은 주얼 속성이 아니라 아틀라스(지도) 속성을 담고 있다(poe-game-data v2026.11.15,
-// `MapAtlas…` 모드 143개 · 접미어 0). 그대로 실으면 주얼 목록에 「에센스에 갇힌 몬스터가 …」 한 줄만 뜬다. 데이터가 고쳐지면 지운다.
-// 낚싯대는 속성 목록에 둘 까닭이 없다(사용자 결정 2026-11-16).
-const SKIP_FILES_BY_GAME = { poe1: new Set(['Jewel.json', 'AbyssJewel.json', 'FishingRod.json']) }
+// 게임별로 더 뺄 파일 — 낚싯대는 속성 목록에 둘 까닭이 없다(사용자 결정 2026-11-16).
+// (PoE1 주얼 두 파일은 v2026.11.15 까지 아틀라스 속성이 들어 있어 뺐다 — v2026.11.16 에서 추출기 도메인 번호가 고쳐져 되살렸다)
+const SKIP_FILES_BY_GAME = { poe1: new Set(['FishingRod.json']) }
 // 거래소 한국어 목록이 로컬 능력치에 붙이는 표시(영문 「(Local)」)
 export { LOCAL_MARK } // 정본은 src/lib/modLineMatch.js
 
@@ -211,6 +210,9 @@ function isUnscaled(mod) {
 // 날값을 화면 단위로 바꿔 싣는 게임. PoE1 흡수(만분율)·초당 재생(분당)은 흔한 속성이라 빼면 목록이 빈다(사용자 제보 2026-11-16).
 // 거래소 칸 단위가 화면 단위임은 PoE1 에서 실측했다(handoff 2026-11-16). PoE2 는 아직 재지 않아 종전대로 뺀다.
 const SCALE_SHOWN_GAMES = new Set(['poe1'])
+// 값 칸 없는 조건을 「수치 없는 속성」 띠로 싣는 게임 — PoE1 스킬 군 주얼의 특출 패시브가 전부 이 모양이다(사용자 요청 2026-11-16).
+// PoE2 는 그런 조건이 5개뿐이라 종전대로 뺀다.
+const FLAG_POOL_GAMES = new Set(['poe1'])
 const SHOWN_DIVISOR = [[/_permyriad(_|$)/, 100], [/_(per_minute|every_minute)(_|$)/, 60]]
 
 /**
@@ -358,6 +360,7 @@ async function main() {
     const affixById = {}
     const categoryById = {}
     const modIdsById = {} // 표에 실린 사다리를 만든 모드들 — 베이스별 목록(bases)을 모드 id 에서 능력치 id 로 옮기는 데 쓴다
+    const flagById = {} // 값 칸이 없는 조건(「○○ 패시브 스킬 1개 추가」) — FLAG_POOL_GAMES 면 따로 띠로 싣는다
     for (const { cands, rows, inferred, affix, statNames, modIds } of families.values()) {
       if (hasValueConflict(rows)) { conflicts++; continue }
       rows.sort((a, b) => b.ilvl - a.ilvl) // 필요 아이템 레벨이 높은 쪽이 T1
@@ -367,7 +370,11 @@ async function main() {
         const tiers = rows.map((row, i) => ({ t: i + 1, l: row.ilvl, v: row.byLine[lineIndex] }))
         // 후보 id 전부에 같은 사다리를 단다. 여러 계열이 한 id 에 걸릴 때의 우선순위는 preferLadder.
         for (const id of ids) {
-          if (classTrade.valueless.has(id)) { skippedValueless++; continue } // 넣을 칸이 없는 능력치
+          if (classTrade.valueless.has(id)) { // 넣을 칸이 없는 능력치 — 티어 사다리가 없다
+            skippedValueless++
+            flagById[id] ??= { c: affixCategoryOf(statNames[lineIndex], cls), o: 1 }
+            continue
+          }
           if (preferLadder(byStat[id], inferredById[id], tiers, inferred)) {
             byStat[id] = tiers
             inferredById[id] = inferred
@@ -423,6 +430,14 @@ async function main() {
       // 묶음 제목(메커니즘 이름, 예: 기원의 나무)은 데이터가 줄 때만 쓴다 — bucketNames 는 태그를 켜는 스탯 문장이라 길다
       const title = data.bucketTitles?.[bucket]?.kr
       if (Object.keys(got.x).length) { mechanics.push({ key: bucket, n: name, ...(title ? { t: title } : {}), x: got.x }); poolMods[bucket] = got.mods }
+    }
+    // 수치 없는 속성 — 스킬 군 주얼 특출 패시브(「파괴의 요원 패시브 스킬 1개 추가」 291개) 같은 조건. 붙어 있기만 하면 걸린다.
+    // 티어 표에는 싣지 않는다(사다리가 없다). 값을 열어 둔 한 흐름(o·f)으로 그린다 — 스킬 부여 띠와 같은 모양이다.
+    if (FLAG_POOL_GAMES.has(game) && Object.keys(flagById).length) {
+      mechanics.push({ key: 'flag', n: '수치 없이 붙는 속성 — 붙어 있기만 하면 걸려요', t: '수치 없는 속성', f: 1, x: flagById })
+      specialCounts.flag ??= { total: 0, matched: 0 }
+      specialCounts.flag.total += Object.keys(flagById).length
+      specialCounts.flag.matched += Object.keys(flagById).length
     }
     // 스킬 부여 — 목걸이만(부재 목걸이). 모드 데이터가 아니라 거래소 「스킬」 그룹에서 온다.
     if (cls === 'Amulet') {

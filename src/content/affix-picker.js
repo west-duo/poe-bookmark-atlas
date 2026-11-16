@@ -133,7 +133,7 @@ const DEFAULT_ROLE = 'or'
  * 장비 3 · 주얼 2 · 플라스크·호신부 1.
  */
 export function affixLimitOf(cls) {
-  if (cls === 'Jewel') return 2
+  if (cls === 'Jewel' || cls === 'AbyssJewel' || cls === 'ClusterJewel') return 2
   if (cls === 'LifeFlask' || cls === 'ManaFlask' || cls === 'HybridFlask' || cls === 'UtilityFlask') return 1
   return 3
 }
