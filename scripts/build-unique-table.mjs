@@ -26,7 +26,7 @@ import { dirname, join } from 'node:path'
 import { gzipSync } from 'node:zlib'
 import { classFromBaseName } from '../src/lib/itemClass.js'
 import { loadStats } from './build-tier-table.mjs'
-import { lineCondition, tradeIndexes, valuesByKey, flipped } from '../src/lib/modLineMatch.js'
+import { lineCondition, tradeIndexes, valuesByKey, flipped, fixedTemplatesOf } from '../src/lib/modLineMatch.js'
 import { normalizeTradeText } from '../src/lib/statTextNorm.js'
 import { DATA_LOCK, resolveLockedGameDataRoot } from './poe-game-data-lock.mjs'
 // 테스트가 이 파일에서 가져가던 이름 — 정본은 src/lib/modLineMatch.js
@@ -180,6 +180,13 @@ export function koreanizePoolNames(u, names) {
  * 판 체크아웃을 못 찾거나(판이 lock 과 다름 포함) 파일이 없으면 **멈춘다** — 다른 빌드 스크립트와 같다. 예전에는 빈 맵으로 넘어갔는데,
  * 매물 관찰의 키스톤 대조(`observedId`)가 이 이름에 기대게 된 뒤(2026-11-16)로는 빈 맵이면 살점 도가니 풀이 조용히 빈다(독립 검토).
  */
+/** lock 판 게임 사전(`<game>/dict/stats.json`, 한국어 → 영문)의 `#` 형태 문구 — 없으면 멈춘다(조용히 규칙이 꺼지지 않게). */
+function statDictTemplates(game) {
+  const f = join(resolveLockedGameDataRoot({ startDir: here }), game, 'dict', 'stats.json')
+  if (!existsSync(f)) throw new Error(`스탯 사전: lock 판 ${DATA_LOCK.snapshot} 에 ${game}/dict/stats.json 이 없습니다 (${f})`)
+  return fixedTemplatesOf(Object.keys(JSON.parse(readFileSync(f, 'utf8'))))
+}
+
 function passiveNames(game = 'poe2') {
   const root = resolveLockedGameDataRoot({ startDir: here })
   const f = join(root, game, 'passives.json')
@@ -212,7 +219,7 @@ function poolCondition(t, { desecrated, indexes, explicitIndex, pool }) {
   const index = desecrated ? indexes?.[DESECRATED_GROUP] : explicitIndex
   if (index) {
     for (const text of [t, `${t}(주얼)`]) {
-      const { ids, v } = lineCondition(text, index, desecrated ? null : pool)
+      const { ids, v } = lineCondition(text, index, desecrated ? null : pool, { fixedTemplates: FIXED_TEMPLATES })
       if (ids.length) return { ids, v }
     }
   }
@@ -422,6 +429,8 @@ export function skillLine(text, skillIndex) {
 }
 
 let STATS = null // 무작위 풀·스킬 부여용 — main 이 채운다
+// 숫자가 박힌 거래소 조건을 이을 근거 — 게임 사전의 `#` 형태 문구(modLineMatch fixedNumberMatch). main 이 lock 판 사전으로 채운다
+let FIXED_TEMPLATES = null
 let DESECRATED_D = null // 지금 만드는 고유 부위의 훼손된 속성 표(statAffixes[c].d) — main 이 고유마다 바꾼다
 let PAGE = null // 지금 만드는 고유의 개별 페이지 풀 — main 이 고유마다 바꾼다
 const PAGE_USED = { page: false } // 무작위 자리가 페이지 표를 썼나 — 안 썼으면 main 이 applyUnusedPage
@@ -442,7 +451,7 @@ export function preferPlainIds(ids) {
 /** 줄 → 산출물 줄. */
 function lineOut(text, index, pool) {
   if (RANDOM_SLOT.test(text)) return randomLine(text, { payload: STATS?.payload, page: PAGE, indexes: STATS?.indexes, explicitIndex: index, pool, used: PAGE_USED, affixD: DESECRATED_D })
-  const found = lineCondition(text, index, pool)
+  const found = lineCondition(text, index, pool, { fixedTemplates: FIXED_TEMPLATES })
   const ids = preferPlainIds(found.ids)
   const { v } = found
   const out = { t: text }
@@ -814,6 +823,7 @@ async function main() {
   const pagePools = [] // 개별 페이지에 「속성 부여」 표가 있던 고유
   const pageExtra = [] // 자리에도 변형에도 안 쓴 표 — 사람이 볼 목록
   const names = passiveNames(game) // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
+  FIXED_TEMPLATES = statDictTemplates(game)
   // 삿된 속성 문구 → 그 속성이 (어느 고유 카드에서든) 대신하는 고정 줄 문구들 — 카드에 바뀌는 줄이 빈 경우의 추론용(foulbornLines)
   const swapByMod = new Map()
   for (const c of mutated.values()) {

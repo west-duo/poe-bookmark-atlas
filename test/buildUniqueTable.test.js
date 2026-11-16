@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { htmlLines, valuesByKey, matchLine, linesOf, preferPlainIds, applyObserved, parseUniquePage, chargeRows, pageVariants } from '../scripts/build-unique-table.mjs'
+import { fixedTemplatesOf } from '../src/lib/modLineMatch.js'
 
 // 문구는 poe2db 저장 HTML·거래소 목록의 실제 표기(2026-09-23). 틀려도 조용한 판정이라 대표 줄만 고정한다.
 const index = new Map([
@@ -100,5 +101,31 @@ describe('선도자의 상징 — 베이스 변형과 충전 자리', () => {
     const v = pageVariants(html, '선도자의 상징')
     expect(v.map((x) => x.base)).toEqual(['루비 반지', '쌍보석 반지'])
     expect(v[1]).toEqual({ base: '쌍보석 반지', implicit: [], explicit: [['최대 생명력 5% 증가'], ['[Frenzy Charge, Power Charge, Endurance Charge mods]']] })
+  })
+})
+
+describe('matchLine — 숫자가 박힌 거래소 조건', () => {
+  const index = new Map([
+    ['희귀 또는 고유 적 명중 시 영혼 1개 포식, 1초마다 최대 1번 포식', ['explicit.stat_2103621252']],
+    ['스킬이 투사체 1개 추가 발사', ['explicit.stat_74338099']],
+    ['효과를 받는 동안 스킬이 투사체 1개 추가 발사', ['explicit.stat_323705912']],
+    ['화염 저항 #%', ['explicit.stat_3372524247']],
+    ['명중당하면 30레벨 그림자 형상 발동', ['explicit.stat_2603798371']],
+  ])
+  // 게임 사전(poe1/dict/stats.json)의 한국어 키 일부 — `#` 형태가 있는 것만 근거가 된다
+  const opts = { fixedTemplates: fixedTemplatesOf(['희귀 또는 고유 적 명중 시 영혼 1개 포식, #초마다 최대 1번 포식', '스킬이 투사체 #개 추가 발사', '명중당하면 20레벨 그림자 형상 발동', '명중당하면 30레벨 그림자 형상 발동']) }
+  it('숫자만 다르고 사전에 `#` 형태가 있으면(헤드헌터 삿된 「0.25초마다」) 그 조건 하나로 잇고 값은 비운다', () => {
+    expect(matchLine('희귀 또는 고유 적 명중 시 영혼 1개 포식, 0.25초마다 최대 1번 포식', index, null, false, opts)).toEqual({ ids: ['explicit.stat_2103621252'], keys: ['희귀 또는 고유 적 명중 시 영혼 1개 포식, 1초마다 최대 1번 포식'], flip: false })
+    expect(matchLine('스킬이 투사체 3개 추가 발사', index, null, false, opts).ids).toEqual(['explicit.stat_74338099'])
+  })
+  it('사전에 `#` 형태가 없으면 숫자가 조건을 가르는 것이라 잇지 않는다 — 그림자 형상 20레벨 ↔ 30레벨', () => {
+    expect(matchLine('명중당하면 20레벨 그림자 형상 발동', index, null, false, opts).ids).toEqual([])
+  })
+  it('사전을 주지 않으면(확장 런타임) 이 규칙을 쓰지 않는다', () => {
+    expect(matchLine('스킬이 투사체 3개 추가 발사', index, null).ids).toEqual([])
+  })
+  it('글자가 다르면 잇지 않는다 — 앞말이 붙은 다른 조건과 섞지 않는다', () => {
+    expect(matchLine('고유 적 명중 시 영혼 1개 포식, 0.5초마다 최대 1번 포식', index, null, false, opts).ids).toEqual([])
+    expect(matchLine('최근 4초 이내 스킬이 투사체 2개 추가 발사', index, null, false, opts).ids).toEqual([])
   })
 })

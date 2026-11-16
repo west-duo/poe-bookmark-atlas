@@ -89,7 +89,7 @@ export function valuesByKey(text, key, flip) {
  * @param {Set<string>|null} pool 그 유형의 일반 속성 id(로컬·전역 판정용)
  * @returns {{ids:string[], keys:string[], flip:boolean}} keys — 붙은 거래소 비교 키(값을 읽는 틀)
  */
-export function matchLine(text, index, pool, flip = false) {
+export function matchLine(text, index, pool, flip = false, { fixedTemplates = null } = {}) {
   const src = flip ? flipped(text) : text
   const filled = (src.match(/\([^)]*\d[^)]*\)/g) || []).length
   const byKey = new Map()
@@ -107,16 +107,64 @@ export function matchLine(text, index, pool, flip = false) {
     if (inG !== inL) keys = [inL ? l : g]
   }
   if (!keys.length) {
-    if (!flip && flipped(text)) return matchLine(text, index, pool, true)
+    if (!flip && flipped(text)) {
+      const r = matchLine(text, index, pool, true)
+      if (r.ids.length) return r
+    }
+    if (!flip && fixedTemplates) {
+      const fixed = fixedNumberMatch(text, index, fixedTemplates)
+      if (fixed) return fixed
+    }
     return { ids: [], keys: [], flip }
   }
   const ids = [...new Set(keys.flatMap((k) => byKey.get(k)))]
   return { ids, keys, flip }
 }
 
+// 숫자가 문구에 박힌 거래소 조건(`#` 자리 없음) — 「희귀 또는 고유 적 명중 시 영혼 1개 포식, 1초마다 최대 1번 포식」.
+// 같은 조건이 아이템에서는 다른 숫자로 적힌다(헤드헌터 삿된 「…0.25초마다…」 매물의 줄 hash 가 explicit.stat_2103621252, 2026-11-17 실측).
+// 숫자를 모두 가린 문구가 **그런 조건 하나와만** 맞으면 그 조건으로 잇는다(값 칸이 없으니 값은 비운다). 다른 길로 못 이은 줄에만 쓴다.
+// ⚠ 숫자가 조건 자체를 가르는 경우가 있다(「명중당하면 20레벨 그림자 형상 발동」 ↔ 「30레벨」은 게임 사전에서 별개 문구 — 독립 검토 2026-11-17).
+// 그래서 **게임 사전에 같은 모양의 `#` 형태 문구가 있을 때만**(fixedTemplates — 「…영혼 1개 포식, #초마다 최대 1번 포식」) 잇는다.
+// 사전이 없는 확장 런타임(uniqueObserved)은 이 규칙을 쓰지 않는다 — 값 없이 거래소 문구를 보이면 틀린 숫자가 화면에 뜬다.
+const NUMBER = /[+-]?\d+(?:\.\d+)?/g
+export const maskNumbers = (s) => String(s).replace(NUMBER, '#')
+/**
+ * 게임 사전(poe-game-data `<game>/dict/stats.json` 의 한국어 키)에서 `#` 자리가 있는 문구 → 숫자를 가린 모양 집합. 빌드가 만든다.
+ * @param {Iterable<string>} texts
+ */
+export function fixedTemplatesOf(texts) {
+  const out = new Set()
+  for (const t of texts) if (typeof t === 'string' && t.includes('#')) out.add(maskNumbers(normalizeTradeText(t)))
+  return out
+}
+const maskedIndexes = new WeakMap() // 색인 → (숫자를 가린 키 → 원래 키들)
+function maskedIndexOf(index) {
+  let masked = maskedIndexes.get(index)
+  if (masked) return masked
+  masked = new Map()
+  for (const key of index.keys()) {
+    if (key.includes('#')) continue
+    const m = maskNumbers(key)
+    if (m === key) continue
+    masked.set(m, [...(masked.get(m) ?? []), key])
+  }
+  maskedIndexes.set(index, masked)
+  return masked
+}
+function fixedNumberMatch(text, index, templates) {
+  if (!index?.size) return null
+  const want = maskNumbers(normalizeTradeText(text))
+  if (!templates.has(want)) return null
+  const keys = maskedIndexOf(index).get(want)
+  if (!keys || keys.length !== 1) return null
+  return { ids: [...index.get(keys[0])], keys, flip: false }
+}
+
 /** 조건 id·값을 한 번에 — 후보 키가 여럿이어도 값 자리는 같은 문구에서 나오므로 처음 읽히는 틀을 쓴다. */
-export function lineCondition(text, index, pool) {
-  const { ids, keys, flip } = matchLine(text, index, pool)
+/** @param {{fixedTemplates?:Set<string>|null}} [opts] fixedTemplates — 빌드만 준다(fixedNumberMatch) */
+export function lineCondition(text, index, pool, opts = {}) {
+  const { ids, keys, flip } = matchLine(text, index, pool, false, opts)
   let v = null
   for (const key of keys) {
     v = valuesByKey(text, key, flip)
