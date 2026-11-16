@@ -392,13 +392,17 @@ export function createUniquePane(doc, { table, onChange, observe = null, game = 
   }
   function swapChip(e, kind, line, i, textEl) {
     const others = swappedKeys(e, kind, line, i)
-    if (!others.length) return
+    // rt — 바뀌는 줄이 이 목록의 고정 속성에 없는 경우(종자 「모든 홈이 하얀색임」). 문구만 보이고 막을 것은 없다
+    const loose = kind === 'm' ? (line.rt ?? []).map((t) => t.replace(/\n/g, ' / ')) : []
+    if (!others.length && !loose.length) return
     const textOf = (k) => { const [kd, n] = k.split('|'); return (e[kd]?.[Number(n)]?.t ?? '').replace(/\n/g, ' / ') }
     const short = (s) => (s.length > 16 ? s.slice(0, 15) + '…' : s)
-    const c = el(doc, 'i', 'ba-uq-imbue-chip', kind === 'm' ? `「${short(textOf(others[0]))}」 대신` : `${W.short} 시 바뀜`)
+    const names = [...others.map(textOf), ...loose]
+    const c = el(doc, 'i', 'ba-uq-imbue-chip', kind === 'm' ? `「${short(names[0])}」 대신` : `${W.short} 시 바뀜`)
     c.dataset.tip = kind === 'm'
-      ? `${W.filter}은 이 속성이 고정 속성 ${others.map((k) => `「${textOf(k)}」`).join(' · ')} 대신 붙어요\n둘 다 붙은 매물은 없어서 함께 고를 수 없어요`
-      : `${W.filter}은 이 속성 대신 ${others.map((k) => `「${textOf(k)}」`).join(' · ')} 중 하나가 붙을 수 있어요\n함께 고를 수 없어요`
+      ? `${W.filter}은 이 속성이 고정 속성 ${names.map((t) => `「${t}」`).join(' · ')} 대신 붙어요` +
+        (others.length ? '\n둘 다 붙은 매물은 없어서 함께 고를 수 없어요' : '')
+      : `${W.filter}은 이 속성 대신 ${names.map((t) => `「${t}」`).join(' · ')} 중 하나가 붙을 수 있어요\n함께 고를 수 없어요`
     bindPageTip(c, { placement: 'below' })
     textEl.appendChild(c)
   }

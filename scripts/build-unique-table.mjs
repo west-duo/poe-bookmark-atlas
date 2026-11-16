@@ -293,21 +293,41 @@ export function chargeRows(text, rows) {
  * PoE1 삿된 줄 — 속성마다 따로 이어 `rf`(대신하는 고정 속성 줄 번호, f 기준)를 붙인다. 화면이 「○○ 대신」을 보이고,
  * 대신하는 고정 줄과 함께 고르지 못하게 한다(둘 다 붙은 매물은 없다 — 독립 검토 2026-11-17).
  * 고정 줄은 문구로 찾고, 못 찾으면 조건 id 로 찾는다.
+ * - 바뀌는 줄이 이 고유의 고정 속성 목록에 없으면(종자 「모든 홈이 하얀색임」 · 샤브론의 겉옷 「에너지 보호막 재충전 시작 속도 10% 가속」 —
+ *   poedb 본 목록 카드에 없는 줄) 문구만 `rt` 로 싣는다. 화면은 「○○ 대신」만 보이고, 함께 고를 줄이 없으니 막을 것도 없다.
+ * - 카드에 바뀌는 줄이 비어 있으면(하늘작렬 「공격 속도 (25-27)% 증가」) 다른 고유 카드에서 **같은 삿된 속성**이 대신하는 줄 중
+ *   이 고유에 있는 것이 하나뿐일 때 그 줄로 본다(살점난도자: 같은 속성이 「치명타 확률 (20-40)% 증가」 대신). swapByMod 는 main 이 만든다.
+ * - 한 삿된 속성이 여러 줄로 적힌 경우(샤브론의 겉옷: 「장착된 젬에 20레벨 살아있는 번개 보조 효과 적용」 + 같은 뜻의 다른 표기 +
+ *   「… 소환 부여」) 조건에 이은 줄이 있으면 못 이은 줄은 설명으로 보고 뺀다 — 고를 수 없는 줄이 따로 떠 속성이 많아 보였다.
  */
-function foulbornLines(cult, f, { explicitIndex, pool, counts }) {
+function foulbornLines(cult, f, { explicitIndex, pool, counts, swapByMod = null }) {
   const out = []
   cult.mutated.forEach((mod, k) => {
     const rf = []
-    for (const b of cult.replaces?.[k] ?? []) {
+    const rt = []
+    let blocks = cult.replaces?.[k] ?? []
+    if (!blocks.length && swapByMod) {
+      const guess = [...(swapByMod.get(mod.join('\n')) ?? [])].filter((t) => f.some((l) => l.t === t))
+      if (guess.length === 1) blocks = [guess[0].split('\n')]
+    }
+    for (const b of blocks) {
       const text = b.join('\n')
       let at = f.findIndex((l) => l.t === text)
       if (at < 0) {
         const id = linesOf([b], explicitIndex, pool, { hidden: 0 })[0]?.id
         if (id) at = f.findIndex((l) => l.id === id)
       }
-      if (at >= 0 && !rf.includes(at)) rf.push(at)
+      if (at >= 0) { if (!rf.includes(at)) rf.push(at) } else if (!rt.includes(text)) rt.push(text)
     }
-    for (const l of linesOf([mod], explicitIndex, pool, counts)) out.push(rf.length ? { ...l, rf: rf.sort((a, b) => a - b) } : l)
+    let lines = linesOf([mod], explicitIndex, pool, counts)
+    const linked = (l) => l.id || l.alt?.length || l.all?.length || l.k
+    if (lines.length > 1 && lines.some(linked)) lines = lines.filter(linked)
+    for (const l of lines) {
+      const o = { ...l }
+      if (rf.length) o.rf = rf.sort((a, b) => a - b)
+      if (rt.length) o.rt = rt
+      out.push(o)
+    }
   })
   return out
 }
@@ -794,6 +814,16 @@ async function main() {
   const pagePools = [] // 개별 페이지에 「속성 부여」 표가 있던 고유
   const pageExtra = [] // 자리에도 변형에도 안 쓴 표 — 사람이 볼 목록
   const names = passiveNames(game) // 매물 관찰의 영문 키스톤 이름 찾기와 풀 이름 한글화에 함께 쓴다
+  // 삿된 속성 문구 → 그 속성이 (어느 고유 카드에서든) 대신하는 고정 줄 문구들 — 카드에 바뀌는 줄이 빈 경우의 추론용(foulbornLines)
+  const swapByMod = new Map()
+  for (const c of mutated.values()) {
+    if (!c.partial) continue
+    c.mutated.forEach((mod, k) => {
+      const set = swapByMod.get(mod.join('\n')) ?? new Set()
+      for (const b of c.replaces?.[k] ?? []) set.add(b.join('\n'))
+      swapByMod.set(mod.join('\n'), set)
+    })
+  }
   // 목록에 베이스 하나만 실린 고유의 다른 베이스 변형 — 개별 페이지 카드에서, 거래소 고유 목록에 있는 이름·베이스만 더한다
   const allCards = []
   for (const card of cards) {
@@ -828,7 +858,7 @@ async function main() {
     const i = linesOf(card.implicit, indexes[IMPLICIT_GROUP], pool, counts)
     PAGE = pageForExplicit
     const f = linesOf(card.explicit, explicitIndex, pool, counts)
-    const m = cult?.partial ? foulbornLines(cult, f, { explicitIndex, pool, counts }) : linesOf(cult?.mutated ?? [], explicitIndex, pool, counts)
+    const m = cult?.partial ? foulbornLines(cult, f, { explicitIndex, pool, counts, swapByMod }) : linesOf(cult?.mutated ?? [], explicitIndex, pool, counts)
     if (i.length) entry.i = i
     if (f.length) entry.f = f
     if (m.length) entry.m = m
