@@ -119,7 +119,11 @@ export function buildTypeDoll(doc, classes, { onPick, game = 'poe2' }) {
     if (area) b.dataset.area = area
     if (kind) b.dataset.kind = kind
     const label = doc.createElement('span')
-    label.textContent = c.label
+    // 칸에서는 PoE1 거래소 표기의 「기본 」 을 뗀다 — 셉터·룬 단검·전쟁지팡이가 옆 칸에 따로 있어 칸 자리로 갈리고,
+    // 떼지 않으면 칸 이름이 두 줄로 접힌다(사용자 요청 2026-11-17). 원래 이름은 툴팁과 위쪽 「아이템 유형」 줄에 그대로 둔다(§30).
+    const short = c.label.replace(/^기본 /, '')
+    label.textContent = short
+    if (short !== c.label) b.title = c.label
     b.append(icon(doc, cls), label)
     b.addEventListener('click', () => onPick(cls))
     buttons.push(b)

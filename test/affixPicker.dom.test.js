@@ -631,6 +631,10 @@ describe('openAffixPopover', () => {
         .toEqual([['Bow', 'One_Hand_Sword', 'Thrusting_One_Hand_Sword'], ['Wand', 'Rune_Dagger']])
       expect(areaOf(el, 'HybridFlask')).toEqual(['is-flask'])
       expect(el.querySelector('.is-flask .ba-affix-doll-chip').textContent).toBe('플라스크')
+      // 칸 이름은 「기본 」 을 떼고 한 줄로, 원래 이름은 툴팁에 남긴다
+      const sword = el.querySelector('.ba-affix-slot[data-cls="One_Hand_Sword"]')
+      expect([sword.textContent, sword.title]).toEqual(['한손 검', '기본 한손 검'])
+      expect(el.querySelector('.ba-affix-slot[data-cls="Bow"]').title).toBe('')
     })
 
     it('고른 칸만 켜진다', () => {
