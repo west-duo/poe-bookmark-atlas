@@ -10,7 +10,7 @@ import { formatPrice } from '../../lib/formatPrice.js'
 import { icon } from '../../lib/icons.js'
 import { suggestName } from '../../lib/suggestName.js'
 import { findNearDuplicate, formatStatText, optionText } from '../../lib/searchParser.js'
-import { searchHashFromUrl } from '../../lib/tradeSearch.js'
+import { searchHashFromUrl, isSelfContainedSearchId } from '../../lib/tradeSearch.js'
 import { shouldOpenNewTab, hasOpenModifier } from '../../lib/openTarget.js'
 import { leagueDisplayName } from '../../lib/leagueMap.js'
 import divineIcon from '../../icons/divine.png'
@@ -53,7 +53,8 @@ async function hydrateUiState() {
   if (uiHydrated) return
   uiHydrated = true
   try {
-    const r = await chrome.storage.local.get(['uiBmSort', 'uiCollapsedFolders', 'uiOpenInNewTab', 'uiSecOrder', 'uiCollapsedSecs', 'uiWatchNudgeSnooze'])
+    const r = await chrome.storage.local.get(['uiBmSort', 'uiCollapsedFolders', 'uiOpenInNewTab', 'uiSecOrder', 'uiCollapsedSecs', 'uiWatchNudgeSnooze', 'uiLeagueNudgeDismissed'])
+    if (typeof r.uiLeagueNudgeDismissed === 'string') leagueNudgeDismissed = r.uiLeagueNudgeDismissed
     if (r.uiBmSort) bmSort = r.uiBmSort
     if (typeof r.uiOpenInNewTab === 'boolean') openNewTab = r.uiOpenInNewTab
     if (Array.isArray(r.uiCollapsedFolders)) { collapsedFolders.clear(); r.uiCollapsedFolders.forEach((k) => collapsedFolders.add(k)) }
@@ -96,7 +97,7 @@ let focusGripId = null // 키보드 재정렬 후 포커스 복원 대상
 let focusBookmarkId = null // 저장·승격 후 스크롤·강조 대상
 
 // 접근성: 아이콘 액션(span)을 키보드 포커스·활성화·라벨 가능하게 (role=button + tabindex + aria-label + Enter/Space)
-const A11Y_SEL = '.ba-copy, .ba-over, .ba-rename, .ba-move, .ba-del, .ba-star, .ba-hist-del, .ba-open, .ba-attn[data-act], .ba-folder-rename, .ba-folder-export, .ba-folder-clear, .ba-folder-del, .ba-folder-select, .ba-folder-moveall, .ba-bsel, .ba-folder-ic[data-id], .ba-sort-seg, .ba-import, .ba-export, .ba-sec-title[data-sec], .ba-wnudge-x'
+const A11Y_SEL = '.ba-copy, .ba-over, .ba-rename, .ba-move, .ba-del, .ba-star, .ba-hist-del, .ba-open, .ba-attn[data-act], .ba-folder-rename, .ba-folder-export, .ba-folder-clear, .ba-folder-del, .ba-folder-select, .ba-folder-moveall, .ba-bsel, .ba-folder-ic[data-id], .ba-sort-seg, .ba-import, .ba-export, .ba-sec-title[data-sec], .ba-wnudge-x, .ba-lnudge-x'
 function applyA11y(listEl) {
   listEl.querySelectorAll(A11Y_SEL).forEach((el) => {
     if (el.matches('button, a, input')) return
@@ -703,6 +704,28 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 // 일괄 확인이 도는 중인가 / 중단이 눌렸는가. 재렌더가 버튼 DOM 을 바꾸므로 모듈 레벨이어야 한다.
 let bulkWatchRunning = false
 let bulkWatchCancel = false
+// 지난 리그 북마크 일괄 이관 띠를 ✕ 로 닫은 그 리그(2026-11-21). 리그가 바뀌면 다시 뜬다 — 새 시즌마다 한 번 필요한 일이다.
+let leagueNudgeDismissed = ''
+// 일괄 이관 상태 — 렌더마다 새로 생기는 bindAll 지역 변수에 두면 도는 중 재렌더(거래소 검색 → records-changed)에서
+// 진행 표시가 사라지고 단건 이관과 겹친다(독립 검토). 띠는 이 상태로 다시 그린다.
+const bulk = { running: false, cancel: false, armed: false, i: 0, n: 0, blockedUntil: 0 }
+// 이번 화면에서 옮기지 못한 북마크 — 만료·조건 없음처럼 다시 눌러도 같은 결과인 것을 띠의 개수와 대상에서 뺀다.
+const bulkFailedIds = new Set()
+// 거래소에 묻는(옛 짧은 링크) 이관은 GET 에 만료면 POST 까지 1~2건이다. 한 번에 이만큼만, 사이에 간격을 둔다 —
+// 찜 일괄 확인처럼 사용자 몫의 요청을 남겨 둔다. 조건을 담은 링크(요청 없음)는 세지 않는다.
+const BULK_MIGRATE_GAP_MS = 2000
+const BULK_MIGRATE_NETWORK_CAP = 20
+const BULK_MIGRATE_BLOCK_MS = 60_000 // 요청 제한(429)에 걸리면 이만큼 다시 누르지 못하게 — 바로 다시 보내면 정지가 길어진다
+const sameHostUrl = (url) => { try { return new URL(url).origin === location.origin } catch (_) { return false } }
+/**
+ * 지금 리그로 옮길 지난 리그 북마크. 링크·조건이 모두 없는 것, **다른 거래소(호스트)에서 만든 것**(유형 이름이 그 언어라
+ * 여기서 다시 만들면 틀린 검색이 된다 — AGENTS.md 글로벌 지원 절), 이번 화면에서 이미 실패한 것은 뺀다.
+ */
+export function pastLeagueBookmarks(bookmarks, lg, failed = bulkFailedIds) {
+  if (!lg) return []
+  return (bookmarks || []).filter((b) => b && b.kind === 'bookmark' && lg.isDead(b.league) && migratable(b)
+    && sameHostUrl(b.url) && !failed.has(b.id))
+}
 // '지금 확인할까요?' 권유를 ✕ 로 닫은 시각 + 24시간. 영구 숨김이 아니라 스누즈다(watchRefresh.js 주석).
 let watchNudgeSnoozeUntil = 0
 const snoozeWatchNudge = () => {
@@ -904,6 +927,22 @@ export async function renderList(listEl, root, ui = {}) {
       const inFolder = new Set(bookmarks.filter((b) => (b.folderId ?? '') === selectFolder).map((b) => b.id))
       if (!inFolder.size) { selectFolder = null; selectedIds.clear() } else [...selectedIds].forEach((id) => { if (!inFolder.has(id)) selectedIds.delete(id) })
     }
+    // 새 시즌 — 지난 리그 북마크를 한 번에 지금 리그로(사용자 요청 2026-11-21: "하나하나 눌러서 변경해야 되는 번거로움").
+    // 폴더와 무관하게 전부다. 지금 리그를 모르면 띄우지 않는다 — 어디로 옮길지 모르는 버튼이 된다.
+    const past = pastLeagueBookmarks(bookmarks, lg)
+    if (bulk.running || (past.length && currentLeague && leagueNudgeDismissed !== currentLeague)) {
+      const to = escapeHtml(lg.name(currentLeague || ''))
+      // 두 번 누르는 확인 — 지금 리그를 잘못 잡으면(리그 없는 주소 → Standard) 전부가 되돌릴 수 없게 옮겨진다(독립 검토).
+      // 대상 리그 이름을 버튼에 그대로 쓰고, 한 번 더 눌러야 시작한다. 삭제의 armed 확인과 같은 방식이다.
+      const label = bulk.running ? `옮기는 중 ${bulk.i}/${bulk.n} · 누르면 멈춤`
+        : bulk.armed ? `${past.length}개를 ${to}(으)로 옮길까요? 한 번 더`
+          : `${to}(으)로 모두 옮기기`
+      bmBody += `<div class="ba-wnudge ba-lnudge">
+        <span class="ba-wnudge-tx" aria-live="polite">${icon('trophy', 12)}지난 리그 북마크 <b>${bulk.running ? bulk.n : past.length}개</b></span>
+        <button class="ba-wnudge-go ba-lnudge-go${bulk.armed ? ' armed' : ''}" data-tip="지난 리그 북마크를 ${to}(으)로 옮겨요 — 이름·폴더는 그대로예요\n오래된 링크는 거래소에 한 개씩 천천히 물어보고, 한 번에 ${BULK_MIGRATE_NETWORK_CAP}개까지예요">${label}</button>
+        ${bulk.running ? '' : `<span class="ba-wnudge-x ba-lnudge-x" data-tip="이번 리그 동안 그만 보기">${icon('x', 12)}</span>`}
+      </div>`
+    }
     for (const g of groups) {
       const items = sortItems(bookmarks.filter((b) => (b.folderId ?? null) === g.id))
       bmBody += folderHtml(g, items, lg, currentLeague)
@@ -1090,7 +1129,7 @@ function bindAll(listEl, ui, ctx) {
   })
   // '지금 확인' — 진행 표시는 섹션 머리 버튼이 이미 나르므로 **그 버튼에 위임한다.**
   // 권유 배너는 먼저 지운다: 남겨 두면 도는 중에 다시 눌러 '중단'이 돼 버린다(누른 것과 반대 결과).
-  const nudgeEl = listEl.querySelector('.ba-wnudge')
+  const nudgeEl = listEl.querySelector('.ba-wnudge:not(.ba-lnudge)') // 리그 이관 띠도 같은 모양 클래스를 쓴다
   if (nudgeEl) {
     const go = nudgeEl.querySelector('.ba-wnudge-go')
     if (go) go.addEventListener('click', (e) => {
@@ -1128,6 +1167,7 @@ function bindAll(listEl, ui, ctx) {
   // opts.live — 이관 뒤 '라이브로 열기'로 이어간다. 끝난 리그에 라이브를 걸면 매물이 영영 안 뜨므로,
   // 라이브는 항상 지금 리그 기준이어야 한다(사용자 방침 2026-08-16).
   const runMigration = async (id, opts) => {
+    if (bulk.running) { toast('지난 리그 북마크를 옮기는 중이에요. 끝난 뒤 다시 눌러 주세요.'); return }
     if (migrating) return
     if (!ui.migrateSearch) { toast('이 화면에서는 다시 검색을 쓸 수 없어요.'); return }
     migrating = true // ⚠ 첫 await 앞에서 잠근다 — 뒤에 두면 연타 클릭이 전부 검사를 통과해 요청이 여러 번 나간다
@@ -1148,6 +1188,79 @@ function bindAll(listEl, ui, ctx) {
   }
   listEl.querySelectorAll('.ba-migrate').forEach((m) =>
     m.addEventListener('click', (e) => { e.stopPropagation(); runMigration(m.dataset.id) }))
+
+  // ── 지난 리그 북마크 일괄 이관 — 단건과 같은 흐름(ui.migrateSearch)을 한 개씩 순서대로 ──
+  // 조건을 담은 링크(`H4sI…`, 같은 호스트)는 요청 없이 리그만 바꾼다. 옛 짧은 링크는 거래소에 GET(만료면 POST)을 보내므로
+  // 그 사이에만 간격을 둔다. 요청 제한·로그인·연결 문제면 거기서 멈춘다 — 이어 보내 봐야 모두 같은 이유로 실패하고
+  // 거래소 검색 자체가 막힌다. 새 탭은 열지 않는다(수십 개가 열린다).
+  const lnudge = listEl.querySelector('.ba-lnudge')
+  if (lnudge) {
+    const x = lnudge.querySelector('.ba-lnudge-x')
+    if (x) x.addEventListener('click', (e) => {
+      e.stopPropagation()
+      leagueNudgeDismissed = targetLeague || ''
+      bulk.armed = false
+      try { chrome.storage.local.set({ uiLeagueNudgeDismissed: leagueNudgeDismissed }) } catch (_) {}
+      lnudge.remove()
+    })
+    lnudge.querySelector('.ba-lnudge-go').addEventListener('click', (e) => {
+      e.stopPropagation()
+      if (bulk.running) { bulk.cancel = true; return } // 도는 중 다시 누르면 멈춘다(찜 일괄 확인과 같은 약속)
+      if (Date.now() < bulk.blockedUntil) { toast(MIGRATE_FAIL.rate); return }
+      if (migrating) { toast('다른 북마크를 옮기는 중이에요. 끝난 뒤 다시 눌러 주세요.'); return }
+      if (!ui.migrateSearch) { toast('이 화면에서는 다시 검색을 쓸 수 없어요.'); return }
+      if (!targetLeague) { toast('지금 리그를 알 수 없어요. 거래소에서 검색을 한 번 실행하면 바로 잡힙니다.'); return }
+      if (!bulk.armed) { // 첫 클릭은 확인을 묻는다 — 4초 안에 한 번 더
+        bulk.armed = true; changed()
+        setTimeout(() => { if (bulk.armed && !bulk.running) { bulk.armed = false; changed() } }, 4000)
+        return
+      }
+      bulk.armed = false
+      runBulkMigration(targetLeague)
+    })
+  }
+  // 한 개씩 순서대로 — 단건과 같은 흐름(ui.migrateSearch → migrateBookmarkLeague). 조건을 담은 같은 호스트 링크는 요청이
+  // 없고, 옛 짧은 링크만 거래소에 묻는다(그 사이에만 간격·상한). 요청 제한·로그인·연결 문제면 멈춘다 — 이어 보내 봐야 같은
+  // 이유로 실패하고 거래소 검색까지 막힌다. 새 탭은 열지 않는다(수십 개가 열린다). 진행은 bulk 에 두고 띠가 다시 그린다.
+  async function runBulkMigration(target) {
+    bulk.running = true; bulk.cancel = false; bulk.i = 0; bulk.n = 0
+    let moved = 0; let failed = 0; let networked = 0; let stopped = null; let capped = false
+    const paint = () => { const b = listEl.querySelector('.ba-lnudge-go'); if (b) b.textContent = `옮기는 중 ${bulk.i}/${bulk.n} · 누르면 멈춤` }
+    try {
+      const list = pastLeagueBookmarks(await listByKind('bookmark', ui.game), lg)
+      bulk.n = list.length
+      changed()
+      for (const rec of list) {
+        if (bulk.cancel) break
+        const hash = searchHashFromUrl(rec.url, rec.game)
+        const offline = !!hash && isSelfContainedSearchId(hash) // 같은 호스트만 대상이라 요청 없이 끝난다
+        if (!offline) {
+          if (networked >= BULK_MIGRATE_NETWORK_CAP) { capped = true; break }
+          if (networked > 0) await new Promise((r) => setTimeout(r, BULK_MIGRATE_GAP_MS))
+          if (bulk.cancel) break
+          networked++
+        }
+        bulk.i++; paint()
+        const res = await ui.migrateSearch(rec, target)
+        const ok = !!(res && res.ok && isAllowedTradeUrl(res.url) && await migrateBookmarkLeague(rec.id, res.url, target))
+        if (ok) { moved++; continue }
+        failed++
+        if (res && ['rate', 'auth', 'network'].includes(res.reason)) { stopped = res.reason; break }
+        bulkFailedIds.add(rec.id) // 만료·다른 호스트·거절 — 다시 눌러도 같다
+      }
+      const name = lg.name(target)
+      if (stopped === 'rate') bulk.blockedUntil = Date.now() + BULK_MIGRATE_BLOCK_MS
+      if (!bulk.n) toast('옮길 지난 리그 북마크가 없어요.')
+      else if (stopped) toast(`${moved}개를 ${name}(으)로 옮기고 멈췄어요. ${MIGRATE_FAIL[stopped]}`)
+      else if (bulk.cancel) toast(`${moved}개를 ${name}(으)로 옮기고 멈췄어요. 다시 누르면 나머지를 이어서 옮겨요.`)
+      else if (capped) toast(`${moved}개를 ${name}(으)로 옮겼어요. 거래소 요청 제한 때문에 한 번에 ${BULK_MIGRATE_NETWORK_CAP}개씩 물어봐요 — 잠시 뒤 다시 누르면 이어서 옮겨요.`)
+      else if (failed) toast(`${moved}개를 ${name}(으)로 옮겼어요. ${failed}개는 옮기지 못했어요 — 그 카드의 ⋯ → 「내 리그로 다시 검색」에서 이유를 볼 수 있어요.`)
+      else toast(`${moved}개를 모두 ${name}(으)로 옮겼어요.`)
+    } catch (err) {
+      toast(`${moved}개를 옮긴 뒤 오류로 멈췄어요. 패널을 새로고침한 뒤 다시 눌러 주세요.`)
+      console.warn('[BA] 일괄 이관 오류', err)
+    } finally { bulk.running = false; bulk.cancel = false; changed() }
+  }
 
   // 북마크 이름 칩 클릭 → 재검색. 지난 리그 북마크는 열어봐야 조건이 안 맞으므로, 그 자리에서 이관을 제안한다.
   // (Ctrl/⌘ 클릭은 이 제안을 건너뛰고 원본을 그대로 연다 — 급할 때의 탈출구. 여는 위치는 openTradeUrl 이 정한다)

@@ -1168,6 +1168,11 @@
 .ba-wnudge-go:active { transform: scale(0.97); }
 .ba-wnudge-x { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 6px; color: var(--ba-text-muted); cursor: pointer; transition: color .15s, background .15s; }
 .ba-wnudge-x:hover { color: var(--ba-text); background: rgba(255,255,255,0.08); }
+/* 지난 리그 일괄 이관 띠(.ba-lnudge) — 찜 권유 띠와 같은 모양을 쓴다.
+   버튼에 대상 리그 이름이 들어가 길어질 수 있어(영문·하드코어 무자비) 줄바꿈을 허용한다 — 최소폭 342px 에서 잘리지 않게.
+   두 번 누르는 확인(armed)은 삭제의 armed 와 같은 신호색을 쓴다. 도는 중 숫자가 흔들리지 않게 고정폭 숫자. */
+.ba-lnudge-go { white-space: normal; text-align: center; max-width: 100%; font-variant-numeric: tabular-nums; }
+.ba-lnudge-go.armed { color: #fecdd3; background: rgba(244, 63, 94, 0.32); border-color: #f43f5e; }
 /* 오래됨(stale) 배지 — 삭제 동작이라 로즈(위험)색 */
 .ba-attn--del { color: #fda4af; background: var(--ba-danger-soft); border-color: var(--ba-danger-line); }
 
