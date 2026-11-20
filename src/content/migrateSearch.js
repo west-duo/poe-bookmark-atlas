@@ -4,7 +4,8 @@
 //   2026-07-22) 그 해시가 서버에 살아 있으면 이걸로 끝난다 — 조건을 저장하지 않은 옛 북마크까지 복구된다.
 // 2순위: 해시가 만료됐으면 저장된 조건(raw query)으로 새 검색을 생성(공식 엔드포인트 POST,
 //   cross-site-receiver.js와 동일 방식). 필터 UI를 프로그래밍으로 채우지 않는 이유는 lib/tradeSearch.js 헤더 참조.
-// 사용자 클릭 1회 = 요청 0~2회. 일괄 이관은 제공하지 않는다 — GGG rate limit(429)에 걸리면 거래소 검색 자체가 막힌다.
+// 사용자 클릭 1회 = 요청 0~2회. 일괄 이관(2026-11-21, 사용자 요청)은 패널 renderList 의 runBulkMigration 이 이 함수를
+// 한 개씩 부른다 — 요청이 나가는 북마크는 한 번에 20개·2초 간격이고 429 면 멈춘다. GGG rate limit 에 걸리면 거래소 검색 자체가 막힌다.
 import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, isAllowedTradeUrl } from '../lib/tradeSearch.js'
 
 // 해시 조회(GET) 실패를 안내 사유로 옮긴다. 저장된 조건이 없을 때 사용자가 보는 것이 이 사유다.
