@@ -98,6 +98,44 @@ export function searchHashFromUrl(url, game) {
   return isSafeSearchId(hash) ? hash : null
 }
 
+/**
+ * 검색 API 호출(POST `/api/trade/search/<리그>` · 링크로 열 때의 GET `…/<리그>/<해시>`)과 그 응답 id 로
+ * **그 검색의 결과 페이지 주소와 리그**를 만든다. 못 만들면 null.
+ *
+ * 2026-11-21 사용자 제보 「조건 바꿔 저장했는데 안 바뀐다」: 히스토리의 주소가 그 기록의 조건과 다른 검색을 가리켰다 —
+ * 실측: 생명력 ≥100·≥120·≥130 히스토리 셋의 주소를 풀면 셋 다 ≥130. 북마크는 그 주소로 열린다. 응답 시점의
+ * `location.href` 가 이번 검색이 아닐 때 이 주소로 바꾼다(content-main `settleSearchUrl`). 늘 이 주소를 쓰지 않는 이유:
+ * 같은 조건이어도 응답 id 는 검색마다 다른 문자열이라(실측) 주소로 북마크를 찾는 `markUsedByUrl` 이 못 찾게 된다.
+ * @returns {{ url: string, league: string } | null}
+ */
+export function searchPageFromApi(apiUrl, id, game, origin) {
+  if (!isSafeSearchId(id)) return null
+  let path
+  try { path = new URL(String(apiUrl), origin).pathname } catch (_) { return null }
+  if (!/^\/api\/trade2?\/search\//.test(path)) return null
+  const league = leagueFromPath(path.replace(/^\/api/, ''), game)
+  if (!league) return null
+  return { url: origin + searchResultPath(game, league, id), league }
+}
+
+/** 조건을 담은 검색 id(`H4sI…`, gzip→base64url JSON)를 푼다. 못 풀면 null. */
+export async function decodeSelfContainedId(id) {
+  if (!isSelfContainedSearchId(id)) return null
+  try {
+    const bin = atob(id.replace(/-/g, '+').replace(/_/g, '/'))
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0))
+    const text = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text()
+    return JSON.parse(text)
+  } catch (_) { return null }
+}
+
+/** 키 순서와 무관한 JSON — 같은 조건인지 비교하는 데 쓴다. */
+export function stableJson(v) {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(',')}]`
+  if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stableJson(v[k])}`).join(',')}}`
+  return JSON.stringify(v) ?? 'null'
+}
+
 // 응답 id를 그대로 URL에 이어 붙이므로, 경로·쿼리·프로토콜로 탈출할 수 있는 문자는 전부 배제한다.
 // 길이는 넉넉히 둔다 — 검색 id 는 10자 남짓한 해시만 오는 게 아니라, 조건 JSON 을 gzip→base64url 한
 // `H4sI…` 문자열로도 온다(2026-09-23 카카오 POE2 실측: 고유 이름 하나로 202자). 조건 수에 따라 길어지므로

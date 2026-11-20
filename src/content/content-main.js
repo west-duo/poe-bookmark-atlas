@@ -12,7 +12,7 @@ import { buildItemMap } from '../lib/itemMap.js'
 import { priceSnapshot } from '../lib/priceSnapshot.js'
 import { topIcon } from '../lib/topIcon.js'
 import { parseExaltedPerDivine, baseFromPrice, divineFromPrice, baseCurrencyOf, basePerDivineOf, fmtCurAmount } from '../lib/currencyRates.js'
-import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, isAllowedTradeUrl, leagueFromPath } from '../lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, sanitizeQuery, isAllowedTradeUrl, leagueFromPath, searchPageFromApi, searchHashFromUrl, decodeSelfContainedId, stableJson } from '../lib/tradeSearch.js'
 import { migrateSearch as runMigrateSearch } from './migrateSearch.js'
 import { mergeConditionSet, SET_FAIL } from '../lib/conditionSet.js'
 import { renderSetsBar } from '../lib/pageSets.js'
@@ -1661,6 +1661,39 @@ async function runPageSet(set, bar) {
   }
 }
 
+/**
+ * 이번 검색의 결과 페이지 주소(2026-11-21 사용자 제보 「조건 바꿔 저장했는데 안 바뀐다」).
+ *
+ * 응답 시점의 `location.href` 를 그대로 기록하다가 **그 기록의 조건과 다른 검색의 주소**가 저장됐다 — 실측: 생명력
+ * ≥100·≥120·≥130 히스토리 셋의 주소를 풀면 셋 다 ≥130. 북마크는 그 주소로 열리므로 "바꿔 저장해도 그대로" 가 된다.
+ * 보통은 거래소가 응답 전에 주소를 바꿔 지금 주소가 맞다(실측 3회) — 어긋나는 흐름은 재현하지 못했다.
+ *
+ * 그래서 지금 주소가 **다른 검색임이 확인될 때만** 바꾼다 — 지금 주소의 조건을 담은 id(`H4sI`)를 풀어 응답 id 를 푼 조건
+ * (없으면 보낸 조건)과 다를 때. 그때만 응답 id 로 주소를, API 경로로 리그를 만든다. 확인할 수 없으면(짧은 해시·깨진 주소·
+ * 경로 모양이 다른 거래소) 종전대로 지금 주소와 리그를 쓴다. 늘 응답 id 주소를 쓰지 않는 이유: 같은 조건이어도 응답 id 는
+ * 검색마다 다른 문자열이라(실측) 북마크를 주소로 찾는 `markUsedByUrl` 이 열어 둔 북마크를 못 찾는다.
+ * 비교의 기준이 응답 id 인 이유: 실측에서 주소 id 와 응답 id 를 푼 JSON 은 같았지만, 보낸 바디는 null·false 칸이 섞일 수
+ * 있다(독립 검토 — 픽스처 `name: null`). 보낸 바디와 다르다는 것만으로는 바꾸지 않는다.
+ * @returns {Promise<{ url: string, league: string }>}
+ */
+async function settleSearchUrl(page, rec) {
+  const keep = { url: location.href, league: leagueFromUrl() }
+  if (!page) return keep
+  const hereId = searchHashFromUrl(keep.url, game)
+  if (!hereId || hereId === rec.queryId) return keep
+  const here = await decodeSelfContainedId(hereId)
+  if (!here) return keep
+  const answered = await decodeSelfContainedId(rec.queryId)
+  if (answered) {
+    if (stableJson(here) === stableJson(answered)) return keep
+  } else {
+    const sent = rec.query && typeof rec.query === 'object' ? (rec.query.query || rec.query) : null
+    if (!sent || stableJson(here) === stableJson(sent)) return keep
+  }
+  LOG('지금 주소는 다른 검색이다 — 응답 id 로 주소를 만든다')
+  return { url: page.url, league: page.league }
+}
+
 // 검색이 실행된 **그 순간** 히스토리에 남긴다.
 //
 // 왜: 결과가 0건이면 거래소가 /api/trade/fetch 를 호출하지 않아 아래 fetch 분기가 영영 안 돈다.
@@ -1673,18 +1706,18 @@ async function runPageSet(set, bar) {
 // **병합**하므로(있으면 {...기존, ...새것} 후 맨 위로) 두 번 불러도 항목이 늘지 않는다.
 // 여기서는 icon·snapshot 키를 **아예 넣지 않는다** — undefined 로 넣으면 나중에 온 값이 아니라
 // 먼저 있던 값을 덮어버릴 수 있다.
-async function recordSearch() {
-  if (!pending) return
+async function recordSearch(p) {
+  if (!p) return
   // query 를 못 얻었으면 기록하지 않는다 — dedupeKey 가 "t:|n:" 로 뭉개져
   // 서로 다른 검색이 한 항목으로 합쳐진다(위 pending 주석 참조). 안 남기는 편이 낫다.
-  if (!pending.query) { LOG('검색 조건을 못 읽어 히스토리 선기록 생략'); return }
+  if (!p.query) { LOG('검색 조건을 못 읽어 히스토리 선기록 생략'); return }
   await Promise.all([ensureStatMap(), ensureFilterMap(), ensureItemMap()])
-  const parsed = parseSearchQuery(pending.query, statMap, filterMap, itemMap)
-  const key = dedupeKey(pending.query, pending.league)
+  const parsed = parseSearchQuery(p.query, statMap, filterMap, itemMap)
+  const key = dedupeKey(p.query, p.league)
   const rec = await addHistory({
     game,
-    league: pending.league,
-    url: pending.url,
+    league: p.league,
+    url: p.url,
     title: parsed.title,
     itemType: parsed.itemType,
     name: parsed.name,
@@ -1693,7 +1726,7 @@ async function recordSearch() {
     otherFilters: parsed.otherFilters,
     priceFilter: parsed.priceFilter,
     dedupeKey: key,
-    query: pending.query || undefined,
+    query: p.query || undefined,
   })
   LOG('히스토리 선기록(검색 시점):', rec && rec.id, parsed.title)
   document.dispatchEvent(new CustomEvent('ba:records-changed'))
@@ -1732,18 +1765,24 @@ async function handleBridgeMessage(e) {
     // **링크로 연 모든 검색이 같은 키가 되고 addHistory 가 한 항목으로 병합한다**
     // (서로 다른 두 링크가 "같은 조건"으로 보이던 원인 — 사용자 제보 2026-08-13).
     // 다행히 GET 응답 본문에 query 가 그대로 들어 있다({id, query}) → 그걸 폴백으로 쓴다.
-    pending = { queryId: (d.data && d.data.id) || null, query: d.query || (d.data && d.data.query) || null, league: leagueFromUrl(), url: location.href, done: false }
+    // 주소·리그는 지금 주소의 것을 쓰되, 지금 주소가 **다른 검색임이 확인되면** 응답 id·API 경로로 만든다(settleSearchUrl).
+    const page = searchPageFromApi(d.url, d.data && d.data.id, game, location.origin)
+    const current = { queryId: (d.data && d.data.id) || null, query: d.query || (d.data && d.data.query) || null, league: leagueFromUrl(), url: location.href, done: false }
+    current.urlReady = settleSearchUrl(page, current).then((r) => { current.url = r.url; current.league = r.league; lastQueryLeague = r.league })
+    pending = current
     lastQuery = d.query; lastQueryLeague = pending.league // 전환 버튼용 최근 query 보관
     LOG('pending 설정:', { queryId: pending.queryId, league: pending.league })
-    await recordSearch() // 결과가 0건이어도 이 검색이 히스토리에 남게 한다(저장 버튼이 집는 대상)
+    await current.urlReady
+    await recordSearch(current) // 결과가 0건이어도 이 검색이 히스토리에 남게 한다(저장 버튼이 집는 대상)
     return
   }
 
   if (d.kind === 'fetch' && pending && !pending.done) {
+    const cur = pending // 이 아래 await 동안 다음 검색이 pending 을 바꿀 수 있다 — 이 검색만 쓴다
     const qid = queryIdFromUrl(d.url)
-    if (pending.queryId && qid && qid !== pending.queryId) { LOG('fetch qid 불일치, 스킵', qid, pending.queryId); return }
-    pending.done = true
-    await Promise.all([ensureStatMap(), ensureFilterMap(), ensureItemMap()])
+    if (cur.queryId && qid && qid !== cur.queryId) { LOG('fetch qid 불일치, 스킵', qid, cur.queryId); return }
+    cur.done = true
+    await Promise.all([ensureStatMap(), ensureFilterMap(), ensureItemMap(), cur.urlReady])
 
     const results = (d.data && d.data.result) || []
     const listings = results
@@ -1756,7 +1795,7 @@ async function handleBridgeMessage(e) {
     let snapshot = null
     try {
       // BE는 EN 리그 id(예: Mirage)를 요구 — poe1 URL은 KR 표시명(허상)이라 leagueMap으로 역변환(못 찾으면 그대로)
-      const leagueId = Object.keys(leagueMap).find((id) => leagueMap[id] === pending.league) || pending.league
+      const leagueId = Object.keys(leagueMap).find((id) => leagueMap[id] === cur.league) || cur.league
       // 화폐 한글명 맵을 **기다린다** — items 맵 환산(연금술·제왕·바알 등 수십 종)이 이 이름에 걸려 있다.
       // 환율과 병렬로 받아 추가 지연이 없다(둘 다 첫 fetch 시점에 시작된다).
       const [rr] = await Promise.all([
@@ -1781,23 +1820,25 @@ async function handleBridgeMessage(e) {
         '| 환산 못 함', snapshot ? snapshot.dropped : '(스냅샷 없음)', '| 화폐', curNames ? Object.keys(curNames).length : 0, '종')
     } catch (err) { LOG('환율/스냅샷 오류', String(err)) }
 
-    const parsed = parseSearchQuery(pending.query, statMap, filterMap, itemMap)
-    const key = dedupeKey(pending.query, pending.league)
+    const parsed = parseSearchQuery(cur.query, statMap, filterMap, itemMap)
+    const key = dedupeKey(cur.query, cur.league)
     // 저장된 북마크를 열어 결과가 실제로 뜨면(만료 안 됨) lastUsedAt·스냅샷·아이콘 갱신 +
     // 검색 조건을 최신 파서 형식으로 재기록(구 북마크에 능력치 수치 등 반영 — 하위호환 업그레이드).
     // ⚠ 게이트는 **결과가 떴나**다(가격을 낼 수 있었나가 아니다). 종전엔 `listings.length > 0` 이라,
     //   가격 없는 매물만 있는 검색은 북마크를 열어도 lastUsedAt 이 갱신되지 않았다 → 매일 쓰는 북마크가
     //   14일 뒤 「오래됨」 배지를 달고 「오래된 정리」의 삭제 대상이 됐다. 이 함수의 뜻은 "링크가 아직
     //   살아 있다"이고 그 판정 근거는 결과 존재다.
-    if (results.length > 0) await markUsedByUrl(location.href, snapshot || undefined, icon || undefined, {
+    // 이 검색의 주소로 찾는다 — location.href 는 아직 직전 검색(열어 둔 북마크)일 수 있고, 그러면 **그 북마크의 조건이
+    // 새 검색 것으로 덮이고 주소는 옛 것으로 남는다**(2026-11-21 제보와 같은 원인).
+    if (results.length > 0) await markUsedByUrl(cur.url, snapshot || undefined, icon || undefined, {
       title: parsed.title, itemType: parsed.itemType, stats: parsed.stats, statGroups: parsed.statGroups,
-      otherFilters: parsed.otherFilters, priceFilter: parsed.priceFilter, dedupeKey: key, query: pending.query || undefined,
+      otherFilters: parsed.otherFilters, priceFilter: parsed.priceFilter, dedupeKey: key, query: cur.query || undefined,
     })
 
     const rec = await addHistory({
       game,
-      league: pending.league,
-      url: pending.url,
+      league: cur.league,
+      url: cur.url,
       title: parsed.title,
       itemType: parsed.itemType,
       name: parsed.name,
@@ -1808,10 +1849,10 @@ async function handleBridgeMessage(e) {
       icon: icon || undefined,
       snapshot: snapshot || undefined,
       dedupeKey: key,
-      query: pending.query || undefined, // 리그 이관용 raw 조건 — 북마크로 저장·승격될 때 함께 넘어간다
+      query: cur.query || undefined, // 리그 이관용 raw 조건 — 북마크로 저장·승격될 때 함께 넘어간다
     })
     // query 도입 전에 저장한 북마크는 조건이 없어 이관이 불가능하다 → 같은 조건을 다시 검색하는 이 순간 채워 넣는다.
-    if (pending.query) await backfillQuery(key, game, pending.query)
+    if (cur.query) await backfillQuery(key, game, cur.query)
     LOG('히스토리 저장됨:', rec && rec.id, parsed.title)
     document.dispatchEvent(new CustomEvent('ba:records-changed'))
   }

@@ -1,6 +1,6 @@
 // test/tradeSearch.test.js — 리그 이관(저장된 조건을 현재 리그로 재검색)용 순수 헬퍼
 import { describe, it, expect } from 'vitest'
-import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, leagueFromPath } from '../src/lib/tradeSearch.js'
+import { searchApiPath, searchResultPath, isSafeSearchId, isSelfContainedSearchId, sanitizeQuery, searchHashFromUrl, leagueFromPath, searchPageFromApi, decodeSelfContainedId, stableJson } from '../src/lib/tradeSearch.js'
 
 describe('leagueFromPath', () => {
   it.each([
@@ -152,5 +152,51 @@ describe('sanitizeQuery', () => {
     const r = sanitizeQuery({ query: { keep: 1, fn: () => {}, u: undefined } })
     expect(r.ok).toBe(true)
     expect(r.query.query).toEqual({ keep: 1 })
+  })
+})
+
+// 2026-11-21 제보: 응답 시점의 location.href 는 직전 검색 주소였다 — 주소·리그는 API 경로와 응답 id 로 만든다.
+describe('searchPageFromApi', () => {
+  const K = 'https://poe.kakaogames.com'
+  it.each([
+    // 거래소에서 검색(POST) — 응답 id 가 새 검색이다
+    ['https://poe.kakaogames.com/api/trade/search/Covens', 'H4sIAAAA_x-1', 'poe1', `${K}/trade/search/Covens/H4sIAAAA_x-1`, 'Covens'],
+    ['/api/trade/search/%ED%97%88%EC%83%81', 'abc123', 'poe1', `${K}/trade/search/%ED%97%88%EC%83%81/abc123`, '허상'],
+    ['/api/trade2/search/poe2/Fate%20of%20the%20Vaal', 'H4sIzz', 'poe2', `${K}/trade2/search/poe2/Fate%20of%20the%20Vaal/H4sIzz`, 'Fate of the Vaal'],
+    // 링크로 열 때의 GET — 경로에 해시가 붙어 있어도 리그만 읽는다
+    ['/api/trade/search/Standard/EBo8vB8LC5', 'EBo8vB8LC5', 'poe1', `${K}/trade/search/Standard/EBo8vB8LC5`, 'Standard'],
+  ])('%s + %s', (api, id, game, url, league) => {
+    expect(searchPageFromApi(api, id, game, K)).toEqual({ url, league })
+  })
+  it.each([
+    ['/api/trade/fetch/abc', 'x1', 'poe1'], // 검색 API 가 아니다
+    ['/api/trade/search/Covens', undefined, 'poe1'], // 응답 id 없음(오류 응답)
+    ['/api/trade/search/Covens', '../evil', 'poe1'], // 경로 탈출
+    ['/api/trade/search/%E0%A4%A', 'x1', 'poe1'], // 깨진 리그 인코딩
+  ])('만들 수 없으면 null — %s %s', (api, id, game) => {
+    expect(searchPageFromApi(api, id, game, K)).toBeNull()
+  })
+})
+
+// 제보(2026-11-21) 주소의 실제 id — 정복자의 투구 · 방어도 787
+const REPORT_ID = 'H4sIAAAAAAAACpWSTU7DMBCFr4JmHVX-iWMnV0GVFZIJteQmUewgUJQ9SzZIbEAcoDvUS0G5A0rLT0saUL2x5HnfvOfRdOB86lsHSQdV7U1VQgIOs7ZJLyxCH4C_qRES2Dzfv72sN093m8eHs_fb1et6BcEWdpCcd1-ytMwhgMJYj82uYHJIoHbY5tVsd2lf-dRqawrUDV5iCQFcpbbFIcTSlJCwsO-DTxSva2sy42dYFJh5TRkhlDEhxAijf2BcciliRsNojLEj2PAzzRUXKo6ZHHsdjbiFKIkYIyoMQwggN24YZA6Jb1r83YRPO3MmlOKERf82YWIyCZWCK6EiOY4_6cwUkZyGsRox0SQiKGVUioicMFsmBI0IISocQeT0bOoHOdy1Req0W6Q1NtqUhW2xzIa1ntSizQ-l836-t9AdpM2yahu993JQ_E4kleyH8wEEmjjsYgMAAA'
+
+describe('decodeSelfContainedId', () => {
+  it('조건을 담은 id 를 푼다', async () => {
+    const q = await decodeSelfContainedId(REPORT_ID)
+    expect(q.type).toBe('정복자의 투구')
+    expect(q.filters.armour_filters.filters.ar).toEqual({ min: 787 })
+  })
+  it.each(['EBo8vB8LC5', 'H4sI!!!', 'H4sIAAAA'])('못 풀면 null — %s', async (id) => {
+    expect(await decodeSelfContainedId(id)).toBeNull()
+  })
+})
+
+describe('stableJson', () => {
+  it('키 순서와 무관하다', () => {
+    expect(stableJson({ b: 1, a: [{ y: 2, x: 1 }] })).toBe(stableJson({ a: [{ x: 1, y: 2 }], b: 1 }))
+  })
+  it('값이 다르면 다르다 — 꺼진 옵션도 조건이다', () => {
+    expect(stableJson({ id: 'a', disabled: true })).not.toBe(stableJson({ id: 'a' }))
   })
 })
