@@ -7,12 +7,13 @@ project: poe-bookmark-atlas
 
 POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확장 (Vite + @crxjs/vite-plugin). 우측 도킹 Shadow DOM 패널. 제작 브랜드: 서미누기.
 
-## 0.16.0 릴리즈 준비 (2026-11-22)
+## 0.16.0 릴리즈 (2026-11-22)
 
 - 실린 것: #131·#133(poe-game-data v2026.11.15 표) · #132(PoE1 속성 목록·단축키 팝오버) · #135~#140(PoE1 속성 목록 2·3차, 삿된 고유, 선도자의 상징, 주얼 베이스별, 칸 이름) · #141(숫자 박힌 조건) · #142(히스토리 주소) · #143(지난 리그 일괄 이관 띠). 아래 「미릴리즈」 절들이 이 버전이다.
 - 권한 변경 없음(매니페스트 diff 없음) — 재승인 안내 불필요. `WHATS_NEW_VERSION` 그대로(새 기능 투어 없음 — 일괄 이관 띠는 지난 리그 북마크가 있을 때 스스로 뜬다).
 - 노트는 `updateNotes.js` 0.16.0(업데이트 화면 렌더 확인). 스토어 zip `deploy/poe-bookmark-atlas-0.16.0.zip` · 노트 `deploy/RELEASE-0.16.0.md`.
-- 릴리즈 전 사람 확인이 남은 것: #142·#143(로그인 거래소 + 개발 빌드) — 검증 원장 pending.
+- **사용자 결정(2026-11-22): #142(히스토리 주소)·#143(일괄 이관)을 로그인 거래소에서 확인하지 않고 릴리즈한다.** 문제가 보이면 사용자 제보로 대응한다 — 제보가 오면 `settleSearchUrl`·`runBulkMigration` 부터 본다. 검증 원장 두 항목은 pending 그대로.
+- 반영: main 을 develop `d79523b` 로 앞감기 · 태그 `v0.16.0`(같은 커밋) · [GitHub 릴리즈](https://github.com/west-duo/poe-bookmark-atlas/releases/tag/v0.16.0)(본문 = 업데이트 노트). 스토어 업로드는 사용자 몫.
 
 ## 지난 리그 북마크 일괄 이관 띠 (2026-11-21, 미릴리즈)
 
