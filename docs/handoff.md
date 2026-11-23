@@ -13,7 +13,8 @@ POE2 거래소(poe.kakaogames.com) 북마크·히스토리 관리 Chrome MV3 확
 - 권한 변경 없음(매니페스트 diff 없음) — 재승인 안내 불필요. `WHATS_NEW_VERSION` 그대로(새 기능 투어 없음 — 일괄 이관 띠는 지난 리그 북마크가 있을 때 스스로 뜬다).
 - 노트는 `updateNotes.js` 0.16.0(업데이트 화면 렌더 확인). 스토어 zip `deploy/poe-bookmark-atlas-0.16.0.zip` · 노트 `deploy/RELEASE-0.16.0.md`.
 - **사용자 결정(2026-11-22): #142(히스토리 주소)·#143(일괄 이관)을 로그인 거래소에서 확인하지 않고 릴리즈한다.** 문제가 보이면 사용자 제보로 대응한다 — 제보가 오면 `settleSearchUrl`·`runBulkMigration` 부터 본다. 검증 원장 두 항목은 pending 그대로.
-- 반영: main 을 develop `d79523b` 로 앞감기 · 태그 `v0.16.0`(같은 커밋) · [GitHub 릴리즈](https://github.com/west-duo/poe-bookmark-atlas/releases/tag/v0.16.0)(본문 = 업데이트 노트). 스토어 업로드는 사용자 몫.
+- 반영: main 을 develop `d79523b` 로 앞감기 · 태그 `v0.16.0`(같은 커밋) · [GitHub 릴리즈](https://github.com/west-duo/poe-bookmark-atlas/releases/tag/v0.16.0)(본문 = 업데이트 노트). **2026-11-23 사용자가 스토어 업로드·심사 제출 → 같은 날 스토어 배포 완료(사용자 확인).**
+- 검증 대기 정리(2026-11-23, 사이드 세션): 이 저장소의 사람 확인 23건 중 14건을 임시 Chromium 시험대 실측으로 done, 9건(로그인 거래소 필요 — #142·#143 포함)은 human 으로 남겨 [판정판](https://claude.ai/artifact/H9Xzj3VUQpxkm1c3X4YJ6k)에 모았다. 결함 0.
 
 ## 지난 리그 북마크 일괄 이관 띠 (2026-11-21, 미릴리즈)
 
